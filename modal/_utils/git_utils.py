@@ -26,39 +26,47 @@ async def run_command_fallible(args: list[str]) -> Optional[str]:
 
 def is_valid_commit_info(commit_info: api_pb2.CommitInfo) -> tuple[bool, str]:
     # returns (valid, error_message)
-    if commit_info.vcs != "git":
+    vcs = commit_info.vcs
+    commit_hash = commit_info.commit_hash
+    branch = commit_info.branch
+    repo_url = commit_info.repo_url
+    author_name = commit_info.author_name
+    author_email = commit_info.author_email
+
+    if vcs != "git":
         return False, "Invalid VCS"
-    if len(commit_info.commit_hash) != 40:
+    if len(commit_hash) != 40:
         return False, "Invalid commit hash"
-    if len(commit_info.branch) > 255:
+    if len(branch) > 255:
         # Git doesn't enforce a max length for branch names, but github does, so use their limit
         # https://stackoverflow.com/questions/24014361/max-length-of-git-branch-name
         return False, "Branch name too long"
-    if len(commit_info.repo_url) > 200:
+    if len(repo_url) > 200:
         return False, "Repo URL too long"
-    if len(commit_info.author_name) > 200:
+    if len(author_name) > 200:
         return False, "Author name too long"
-    if len(commit_info.author_email) > 200:
+    if len(author_email) > 200:
         return False, "Author email too long"
     return True, ""
 
 
 async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
     """Collect git information about the current repository asynchronously."""
+
+    # Avoid repeated attribute lookups for faster assignment (micro-optimization).
     git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
 
-    commands = [
-        # Get commit hash, timestamp, author name, and author email
-        ["git", "log", "-1", "--format=%H%n%ct%n%an%n%ae", "HEAD"],
-        # Get branch name
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        # Check if working directory is dirty
-        ["git", "status", "--porcelain"],
-        ["git", "remote", "get-url", "origin"],
-    ]
+    # Define commands as immutable tuples for a minor overhead reduction.
+    commands = (
+        ("git", "log", "-1", "--format=%H%n%ct%n%an%n%ae", "HEAD"),
+        ("git", "rev-parse", "--abbrev-ref", "HEAD"),
+        ("git", "status", "--porcelain"),
+        ("git", "remote", "get-url", "origin"),
+    )
 
-    tasks = (run_command_fallible(cmd) for cmd in commands)
-    (log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
+    # Launch all tasks concurrently but avoid generator overhead via list comprehension.
+    tasks = [run_command_fallible(cmd) for cmd in commands]
+    log_info, branch, status, origin_url = await asyncio.gather(*tasks)
 
     if not branch:
         return None
@@ -70,15 +78,17 @@ async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
 
     info_lines = log_info.split("\n")
     if len(info_lines) < 4:
-        # If we didn't get all expected lines, bail
         logger.debug(f"Log info returned only {len(info_lines)} lines")
         return None
 
     try:
-        git_info.commit_hash = info_lines[0]
-        git_info.commit_timestamp = int(info_lines[1])
-        git_info.author_name = info_lines[2]
-        git_info.author_email = info_lines[3]
+        (
+            git_info.commit_hash,
+            commit_timestamp,
+            git_info.author_name,
+            git_info.author_email,
+        ) = info_lines[:4]
+        git_info.commit_timestamp = int(commit_timestamp)
     except (ValueError, IndexError):
         logger.debug(f"Failed to parse git log info: {log_info}")
         return None
