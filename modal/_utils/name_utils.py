@@ -4,6 +4,10 @@ from collections.abc import Mapping
 
 from ..exception import InvalidError
 
+_VALID_NAME_REGEX = re.compile(r"^[a-zA-Z0-9-_.]+$")
+
+_APP_ID_REGEX = re.compile(r"^ap-[a-zA-Z0-9]{22}$")
+
 # https://www.rfc-editor.org/rfc/rfc1035
 subdomain_regex = re.compile("^(?![0-9]+$)(?!-)[a-z0-9-]{,63}(?<!-)$")
 
@@ -17,14 +21,7 @@ def replace_invalid_subdomain_chars(label: str) -> str:
 
 
 def is_valid_object_name(name: str) -> bool:
-    return (
-        # Limit object name length
-        len(name) <= 64
-        # Limit character set
-        and re.match("^[a-zA-Z0-9-_.]+$", name) is not None
-        # Avoid collisions with App IDs
-        and re.match("^ap-[a-zA-Z0-9]{22}$", name) is None
-    )
+    return len(name) <= 64 and _VALID_NAME_REGEX.match(name) is not None and _APP_ID_REGEX.match(name) is None
 
 
 def is_valid_environment_name(name: str) -> bool:
