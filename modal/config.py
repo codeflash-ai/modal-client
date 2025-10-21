@@ -280,18 +280,22 @@ class Config:
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
 
-        def transform(val: str) -> Any:
-            try:
-                return s.transform(val)
-            except Exception as e:
-                raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
+        if use_env:
+            env_val = os.environ.get(env_var_key)
+            if env_val is not None:
+                try:
+                    return s.transform(env_val)
+                except Exception as e:
+                    raise InvalidError(f"Invalid value for {key} config ({env_val!r}): {e}")
 
-        if use_env and env_var_key in os.environ:
-            return transform(os.environ[env_var_key])
-        elif profile in _user_config and key in _user_config[profile]:
-            return transform(_user_config[profile][key])
-        else:
-            return s.default
+        profile_val = _user_config.get(profile, {}).get(key)
+        if profile_val is not None:
+            try:
+                return s.transform(profile_val)
+            except Exception as e:
+                raise InvalidError(f"Invalid value for {key} config ({profile_val!r}): {e}")
+
+        return s.default
 
     def override_locally(self, key: str, value: str):
         # Override setting in this process by overriding environment variable for the setting
