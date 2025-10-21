@@ -254,11 +254,13 @@ class _Secret(_Object, type_prefix="st"):
         if not isinstance(env_dict, dict):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
-        if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
-            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
-        if not all(isinstance(v, str) for v in env_dict_filtered.values()):
-            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+        env_dict_filtered: dict[str, str] = {}
+        for k, v in env_dict.items():
+            if v is None:
+                continue
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+            env_dict_filtered[k] = v
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             if resolver.app_id is not None:
@@ -282,7 +284,7 @@ class _Secret(_Object, type_prefix="st"):
                 raise
             self._hydrate(resp.secret_id, resolver.client, resp.metadata)
 
-        rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
+        rep = f"Secret.from_dict([{', '.join(list(env_dict.keys()))}])"
         return _Secret._from_loader(_load, rep, hydrate_lazily=True)
 
     @staticmethod

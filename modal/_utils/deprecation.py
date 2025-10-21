@@ -31,9 +31,12 @@ def deprecation_warning(
     filename, lineno = "<unknown>", 0
     if show_source:
         # Find the last non-Modal line that triggered the warning
+        _is_internal = _is_internal_frame  # cache local reference
         try:
             frame = sys._getframe()
-            while frame is not None and _is_internal_frame(frame):
+            while frame is not None:
+                if not _is_internal(frame):
+                    break
                 frame = frame.f_back
             if frame is not None:
                 filename = frame.f_code.co_filename
@@ -44,7 +47,8 @@ def deprecation_warning(
 
     warning_cls = PendingDeprecationError if pending else DeprecationError
 
-    # This is a lower-level function that warnings.warn uses
+    from datetime import date
+
     warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
 
 
