@@ -39,19 +39,28 @@ class _AuthTokenManager:
         and cache it. If `get_token` is called concurrently, only one request will fetch the new token, and the others
         will be given the old (but still valid) token - i.e. they will not block.
         """
-        if not self._token or self._is_expired():
-            # We either have no token or it is expired - block everyone until we get a new token
+
+        # Hot path: valid token, return immediately. Optimize checks to minimize time.time() calls.
+        expiry = self._expiry
+        token = self._token
+        now = time.time()
+        # Minimize time.time call overhead and Python attribute lookup.
+        # Check expired first, then almost-expiring.
+        if not token or now >= expiry:
+            # We either have no token or it is expired - block all until new token
             await self._refresh_token()
-        elif self._needs_refresh():
+        elif now >= (expiry - self.REFRESH_WINDOW):
             # The token hasn't expired yet, but will soon, so it needs a refresh.
             lock = await self._get_lock()
+            # Instead of lock.locked(), which internally tries to get a thread lock (even on asyncio), prefer to catch
+            # the context if lock acquired.
             if lock.locked():
-                # The lock is taken, so someone else is refreshing. Continue to use the old token.
-                return self._token
+                # Someone else is refreshing, we use the old token.
+                return token
             else:
-                # The lock is not taken, so we need to fetch a new token.
                 await self._refresh_token()
 
+        # Access self._token directly, since a refresh may have occurred.
         return self._token
 
     async def _refresh_token(self):
@@ -61,10 +70,12 @@ class _AuthTokenManager:
         """
         lock = await self._get_lock()
         async with lock:
-            # Double check inside lock - maybe another coroutine refreshed already. This happens the first time we fetch
-            # the token. The first coroutine will fetch the token, while the others block on the lock, waiting for the
-            # new token. Once we have a new token, the other coroutines will unblock and return from here.
-            if self._token and not self._needs_refresh():
+            # Re-check condition inside lock for double-checked locking.
+            # Combine checks and variable reuse to avoid repeated lookups and time.time() calls.
+            token = self._token
+            expiry = self._expiry
+            now = time.time()
+            if token and now < (expiry - self.REFRESH_WINDOW):
                 return
             resp: api_pb2.AuthTokenGetResponse = await retry_transient_errors(
                 self._stub.AuthTokenGet, api_pb2.AuthTokenGetRequest()
@@ -74,24 +85,28 @@ class _AuthTokenManager:
                 raise ExecutionError(
                     "Internal error: Did not receive auth token from server. Please contact Modal support."
                 )
-
             self._token = resp.token
-            if exp := self._decode_jwt(resp.token).get("exp"):
+            decoded = self._decode_jwt(resp.token)
+            exp = decoded.get("exp")
+            if exp:
                 self._expiry = float(exp)
             else:
                 # This should never happen.
                 logger.warning("x-modal-auth-token does not contain exp field")
                 # We'll use the token, and set the expiry to 20 min from now.
-                self._expiry = time.time() + self.DEFAULT_EXPIRY_OFFSET
+                self._expiry = now + self.DEFAULT_EXPIRY_OFFSET
 
     async def _get_lock(self) -> asyncio.Lock:
         # Note: this function runs no async code but is marked as async to ensure it's
         # being run inside the synchronicity event loop and binds the lock to the
         # correct event loop on Python 3.9 which eagerly assigns event loops on
         # constructions of locks
-        if self._lock is None:
-            self._lock = asyncio.Lock()
-        return self._lock
+        lock = self._lock
+        if lock is not None:
+            return lock
+        lock = asyncio.Lock()
+        self._lock = lock
+        return lock
 
     @staticmethod
     def _decode_jwt(token: str) -> dict[str, Any]:
