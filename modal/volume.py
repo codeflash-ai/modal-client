@@ -1307,34 +1307,40 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
     self_pid = os.readlink("/proc/self")
 
     def find_open_file_for_pid(pid: str) -> Optional[str]:
-        # /proc/{pid}/cmdline is null separated
-        with open(f"/proc/{pid}/cmdline", "rb") as f:
-            raw = f.read()
-            parts = raw.split(b"\0")
-            cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+        try:
+            cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
+            if cwd.is_relative_to(mount_path):
+                if pid == self_pid:
+                    return "cwd is inside volume"
+                else:
+                    # /proc/{pid}/cmdline is null separated
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        raw = f.read()
+                        parts = raw.split(b"\0")
+                        cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+                    return f"cwd of '{cmdline}' is inside volume"
 
-        cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
-        if cwd.is_relative_to(mount_path):
-            if pid == self_pid:
-                return "cwd is inside volume"
-            else:
-                return f"cwd of '{cmdline}' is inside volume"
-
-        for fd in os.listdir(f"/proc/{pid}/fd"):
-            try:
-                path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
+            for fd in os.listdir(f"/proc/{pid}/fd"):
                 try:
-                    rel_path = path.relative_to(mount_path)
-                    if pid == self_pid:
-                        return f"path {rel_path} is open"
-                    else:
-                        return f"path {rel_path} is open from '{cmdline}'"
-                except ValueError:
+                    path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                    try:
+                        rel_path = path.relative_to(mount_path)
+                        if pid == self_pid:
+                            return f"path {rel_path} is open"
+                        else:
+                            # /proc/{pid}/cmdline is null separated
+                            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                                raw = f.read()
+                                parts = raw.split(b"\0")
+                                cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+                            return f"path {rel_path} is open from '{cmdline}'"
+                    except ValueError:
+                        pass
+                except FileNotFoundError:
+                    # File was closed
                     pass
-
-            except FileNotFoundError:
-                # File was closed
-                pass
+        except (FileNotFoundError, PermissionError):
+            pass
         return None
 
     pid_re = re.compile("^[1-9][0-9]*$")
