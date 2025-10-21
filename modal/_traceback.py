@@ -19,6 +19,8 @@ from modal_proto import api_pb2
 from ._vendor.tblib import Traceback as TBLibTraceback
 from .exception import ServerWarning
 
+_TA_FILENAME_PATTERN = re.compile(r"^<ta-[0-9A-Z]{26}>:")
+
 TBDictType = dict[str, Any]
 LineCacheType = dict[tuple[str, str], str]
 
@@ -107,8 +109,9 @@ def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str)
 
 def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
     """Inspect the traceback stack to determine whether an error was raised locally or remotely."""
+    pattern = _TA_FILENAME_PATTERN
     while tb is not None:
-        if re.match(r"^<ta-[0-9A-Z]{26}>:", tb.tb_frame.f_code.co_filename):
+        if pattern.match(tb.tb_frame.f_code.co_filename):
             return True
         tb = tb.tb_next
     return False
