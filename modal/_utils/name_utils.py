@@ -4,6 +4,8 @@ from collections.abc import Mapping
 
 from ..exception import InvalidError
 
+_invalid_subdomain_chars_re = re.compile("[^a-z0-9-]")
+
 # https://www.rfc-editor.org/rfc/rfc1035
 subdomain_regex = re.compile("^(?![0-9]+$)(?!-)[a-z0-9-]{,63}(?<!-)$")
 
@@ -13,7 +15,10 @@ def is_valid_subdomain_label(label: str) -> bool:
 
 
 def replace_invalid_subdomain_chars(label: str) -> str:
-    return re.sub("[^a-z0-9-]", "-", label.lower())
+    # Avoid calling .lower() and regex unless necessary
+    lowered = label.lower()
+    # Use precompiled regex for improved performance
+    return _invalid_subdomain_chars_re.sub("-", lowered)
 
 
 def is_valid_object_name(name: str) -> bool:
