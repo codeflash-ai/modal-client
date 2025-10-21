@@ -35,14 +35,10 @@ class InputInfo:
 
 
 def _reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> list[InputInfo]:
-    function_calls_by_id: dict[str, api_pb2.FunctionCallCallGraphInfo] = {}
-    inputs_by_id: dict[str, api_pb2.InputCallGraphInfo] = {}
-
-    for function_call in ser_graph.function_calls:
-        function_calls_by_id[function_call.function_call_id] = function_call
-
-    for input in ser_graph.inputs:
-        inputs_by_id[input.input_id] = input
+    function_calls_by_id: dict[str, api_pb2.FunctionCallCallGraphInfo] = {
+        f.function_call_id: f for f in ser_graph.function_calls
+    }
+    inputs_by_id: dict[str, api_pb2.InputCallGraphInfo] = {i.input_id: i for i in ser_graph.inputs}
 
     input_info_by_id: dict[str, InputInfo] = {}
     result = []
@@ -52,12 +48,12 @@ def _reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> 
             return input_info_by_id[input_id]
 
         # Input info can be missing, because input retention is limited.
-        if input_id not in inputs_by_id:
+        input = inputs_by_id.get(input_id)
+        if input is None:
             return None
 
-        input = inputs_by_id[input_id]
         function_call = function_calls_by_id[input.function_call_id]
-        input_info_by_id[input_id] = InputInfo(
+        info = InputInfo(
             input_id,
             input.function_call_id,
             input.task_id,
@@ -66,19 +62,19 @@ def _reconstruct_call_graph(ser_graph: api_pb2.FunctionGetCallGraphResponse) -> 
             function_call.module_name,
             [],
         )
+        input_info_by_id[input_id] = info
 
-        if function_call.parent_input_id:
-            # Find parent and append to list of children.
-            parent = _reconstruct(function_call.parent_input_id)
+        parent_input_id = function_call.parent_input_id
+        if parent_input_id:
+            parent = _reconstruct(parent_input_id)
             if parent:
-                parent.children.append(input_info_by_id[input_id])
+                parent.children.append(info)
         else:
-            # Top-level input.
-            result.append(input_info_by_id[input_id])
+            result.append(info)
 
-        return input_info_by_id[input_id]
+        return info
 
-    for input_id in inputs_by_id.keys():
+    for input_id in inputs_by_id:
         _reconstruct(input_id)
 
     return result
