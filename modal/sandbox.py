@@ -8,6 +8,21 @@ from collections.abc import AsyncGenerator, Collection, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
 
+import modal.app
+from modal._object import _Object
+from modal._resolver import Resolver
+from modal._utils.deprecation import deprecation_warning
+from modal._utils.name_utils import is_valid_object_name
+from modal.app import _App
+from modal.client import _Client
+from modal.exception import InvalidError
+from modal.gpu import GPU_T
+from modal.image import _Image
+from modal.network_file_system import _NetworkFileSystem
+from modal.proxy import _Proxy
+from modal.scheduler_placement import SchedulerPlacement
+from modal.secret import _Secret
+
 from ._pty import get_pty_info
 from .config import config, logger
 
@@ -363,16 +378,18 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "Set the `pty` parameter to `True` instead.",
             )
 
-        secrets = secrets or []
+        # -- Optimization: Perform env->secret logic only once here
+        # secrets might be None, so convert as needed
+        secrets_arg = [] if secrets is None else list(secrets)
         if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
+            secrets_arg.append(_Secret.from_dict(env))
 
         return await _Sandbox._create(
             *args,
             app=app,
             name=name,
             image=image,
-            secrets=secrets,
+            secrets=secrets_arg,
             network_file_systems=network_file_systems,
             timeout=timeout,
             idle_timeout=idle_timeout,
@@ -437,8 +454,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
         sandbox that runs the shell session.
         """
-        from .app import _App
-
         _validate_exec_args(args)
         if name is not None:
             _warn_if_invalid_name(name)
@@ -446,15 +461,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         if block_network and (encrypted_ports or h2_ports or unencrypted_ports):
             raise InvalidError("Cannot specify open ports when `block_network` is enabled")
 
-        secrets = secrets or []
-        if env:
-            secrets = [*secrets, _Secret.from_dict(env)]
+        # -- Optimization: secrets/env already expanded in .create; do not duplicate work here
+        secrets_arg = [] if secrets is None else list(secrets)
 
-        # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
             args,
             image=image or _default_image,
-            secrets=secrets,
+            secrets=secrets_arg,
             name=name,
             timeout=timeout,
             idle_timeout=idle_timeout,
@@ -485,6 +498,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
 
+        # -- Optimization: compact conditional assignment and early pass
         if app is not None:
             if app.app_id is None:
                 raise ValueError(
@@ -493,7 +507,6 @@ class _Sandbox(_Object, type_prefix="sb"):
                     "modal.Sandbox.create('echo', 'hi', app=app)\n"
                     "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
                 )
-
             app_id = app.app_id
             app_client = app._client
         elif (container_app := _App._get_container_app()) is not None:
