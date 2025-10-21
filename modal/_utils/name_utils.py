@@ -4,6 +4,8 @@ from collections.abc import Mapping
 
 from ..exception import InvalidError
 
+_DEFAULT_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{1,50}$")
+
 # https://www.rfc-editor.org/rfc/rfc1035
 subdomain_regex = re.compile("^(?![0-9]+$)(?!-)[a-z0-9-]{,63}(?<!-)$")
 
@@ -34,6 +36,8 @@ def is_valid_environment_name(name: str) -> bool:
 
 def is_valid_tag(tag: str, max_length: int = 50) -> bool:
     """Tags are alphanumeric, dashes, periods, and underscores, and not longer than the max_length."""
+    if max_length == 50:
+        return bool(_DEFAULT_PATTERN.match(tag))
     pattern = rf"^[a-zA-Z0-9._-]{{1,{max_length}}}$"
     return bool(re.match(pattern, tag))
 
