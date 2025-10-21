@@ -360,14 +360,42 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        signature = inspect.signature(self.raw_f)
-        for param in signature.parameters.values():
-            if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-                # variadic parameters are nullary
-                continue
-            if param.default is param.empty:
-                return False
-        return True
+        try:
+            code = self.raw_f.__code__
+            defaults = self.raw_f.__defaults__ or ()
+            kwdefaults = getattr(self.raw_f, "__kwdefaults__", None) or {}
+            argcount = code.co_argcount
+            kwonlyargcount = code.co_kwonlyargcount
+            varnames = code.co_varnames
+
+            # Check if function accepts *args or **kwargs
+            flags = code.co_flags
+            if flags & inspect.CO_VARARGS or flags & inspect.CO_VARKEYWORDS:
+                return True
+
+            # Check positional arguments
+            num_no_default = argcount - len(defaults)
+            for i in range(argcount):
+                if i < num_no_default:
+                    return False
+
+            # Check keyword-only arguments
+            for i in range(argcount, argcount + kwonlyargcount):
+                kw = varnames[i]
+                if kw not in kwdefaults:
+                    return False
+
+            return True
+        except Exception:
+            # Fall back to original implementation
+            signature = inspect.signature(self.raw_f)
+            for param in signature.parameters.values():
+                if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    # variadic parameters are nullary
+                    continue
+                if param.default is param.empty:
+                    return False
+            return True
 
 
 def callable_has_non_self_params(f: Callable[..., Any]) -> bool:
