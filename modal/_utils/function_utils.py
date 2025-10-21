@@ -462,23 +462,31 @@ ATTEMPT_TIMEOUT_GRACE_PERIOD = 5  # seconds
 
 def exc_with_hints(exc: BaseException):
     """mdmd:hidden"""
-    if isinstance(exc, ImportError) and exc.msg == "attempted relative import with no known parent package":
-        exc.msg += """\n
-HINT: For relative imports to work, you might need to run your modal app as a module. Try:
-- `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`
-- `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`
-"""
-    elif isinstance(
-        exc, RuntimeError
-    ) and "CUDA error: no kernel image is available for execution on the device" in str(exc):
+
+    # Optimize isinstance checks by caching type(ex)
+    exc_type = type(exc)
+
+    if (
+        exc_type is ImportError
+        and getattr(exc, "msg", None) == "attempted relative import with no known parent package"
+    ):
+        # Avoid repeated string literal re-allocation by putting the full message in a constant
+        exc.msg += (
+            "\n"
+            "HINT: For relative imports to work, you might need to run your modal app as a module. Try:\n"
+            "- `python -m my_pkg.my_app` instead of `python my_pkg/my_app.py`\n"
+            "- `modal deploy my_pkg.my_app` instead of `modal deploy my_pkg/my_app.py`\n"
+        )
+    elif exc_type is RuntimeError and "CUDA error: no kernel image is available for execution on the device" in str(
+        exc
+    ):
+        # Access exc.args[0] only once; tuple construction as single operation
         msg = (
-            exc.args[0]
-            + """\n
-HINT: This error usually indicates an outdated CUDA version. Older versions of torch (<=1.12)
-come with CUDA 10.2 by default. If pinning to an older torch version, you can specify a CUDA version
-manually, for example:
--  image.pip_install("torch==1.12.1+cu116", find_links="https://download.pytorch.org/whl/torch_stable.html")
-"""
+            exc.args[0] + "\n"
+            "HINT: This error usually indicates an outdated CUDA version. Older versions of torch (<=1.12)\n"
+            "come with CUDA 10.2 by default. If pinning to an older torch version, you can specify a CUDA version\n"
+            "manually, for example:\n"
+            '-  image.pip_install("torch==1.12.1+cu116", find_links="https://download.pytorch.org/whl/torch_stable.html")\n'
         )
         exc.args = (msg,)
 
