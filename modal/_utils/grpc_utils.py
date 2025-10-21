@@ -9,11 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Optional,
-    TypeVar,
-)
+from typing import Any, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config

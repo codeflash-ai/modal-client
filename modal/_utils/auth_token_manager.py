@@ -25,6 +25,7 @@ class _AuthTokenManager:
         self._stub = stub
         self._token = ""
         self._expiry = 0.0
+        # Defer lock creation to first async context for event loop safety
         self._lock: typing.Union[asyncio.Lock, None] = None
 
     async def get_token(self) -> str:
@@ -60,10 +61,12 @@ class _AuthTokenManager:
         new token. The others will block on a lock, until the first coroutine has fetched the new token.
         """
         lock = await self._get_lock()
+        # Check if refresh is needed before acquiring lock to minimize contention
+        needs_refresh = not self._token or self._needs_refresh()
+        if not needs_refresh:
+            return
         async with lock:
-            # Double check inside lock - maybe another coroutine refreshed already. This happens the first time we fetch
-            # the token. The first coroutine will fetch the token, while the others block on the lock, waiting for the
-            # new token. Once we have a new token, the other coroutines will unblock and return from here.
+            # Double check inside lock - maybe another coroutine refreshed already.
             if self._token and not self._needs_refresh():
                 return
             resp: api_pb2.AuthTokenGetResponse = await retry_transient_errors(
@@ -74,7 +77,6 @@ class _AuthTokenManager:
                 raise ExecutionError(
                     "Internal error: Did not receive auth token from server. Please contact Modal support."
                 )
-
             self._token = resp.token
             if exp := self._decode_jwt(resp.token).get("exp"):
                 self._expiry = float(exp)
@@ -85,10 +87,7 @@ class _AuthTokenManager:
                 self._expiry = time.time() + self.DEFAULT_EXPIRY_OFFSET
 
     async def _get_lock(self) -> asyncio.Lock:
-        # Note: this function runs no async code but is marked as async to ensure it's
-        # being run inside the synchronicity event loop and binds the lock to the
-        # correct event loop on Python 3.9 which eagerly assigns event loops on
-        # constructions of locks
+        # Ensures lock is bound to the correct event loop on first access
         if self._lock is None:
             self._lock = asyncio.Lock()
         return self._lock
