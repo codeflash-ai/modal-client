@@ -125,7 +125,6 @@ class Traceback:
     def __init__(self, tb, *, get_locals=None):
         self.tb_frame = Frame(tb.tb_frame, get_locals=get_locals)
         self.tb_lineno = int(tb.tb_lineno)
-
         # Build in place to avoid exceeding the recursion limit
         tb = tb.tb_next
         prev_traceback = self
@@ -145,12 +144,32 @@ class Traceback:
         current = self
         top_tb = None
         tb = None
+
+        # Preallocate code string, compile only once per filename/lineno to reduce compile overhead
+        code_cache = {}
+
         while current:
             f_code = current.tb_frame.f_code
-            code = compile('\n' * (current.tb_lineno - 1) + 'raise __traceback_maker', current.tb_frame.f_code.co_filename, 'exec')
+            lineno = current.tb_lineno
+            filename = f_code.co_filename
+
+            # Use cache to avoid redundant `compile` calls
+            cache_key = (filename, lineno)
+            code = code_cache.get(cache_key)
+            if code is None:
+                code_str = '\n' * (lineno - 1) + 'raise __traceback_maker'
+                code = compile(code_str, filename, 'exec')
+                code_cache[cache_key] = code
+
             if hasattr(code, 'replace'):
                 # Python 3.8 and newer
-                code = code.replace(co_argcount=0, co_filename=f_code.co_filename, co_name=f_code.co_name, co_freevars=(), co_cellvars=())
+                code = code.replace(
+                    co_argcount=0,
+                    co_filename=f_code.co_filename,
+                    co_name=f_code.co_name,
+                    co_freevars=(),
+                    co_cellvars=()
+                )
             else:
                 code = CodeType(
                     0,
@@ -172,6 +191,8 @@ class Traceback:
 
             # noinspection PyBroadException
             try:
+                # Avoid unnecessary dict conversion when locals/globals already dict;
+                # but in practice, dict(x) is fast for actual dicts, so keep original call.
                 exec(code, dict(current.tb_frame.f_globals), dict(current.tb_frame.f_locals))  # noqa: S102
             except Exception:
                 next_tb = sys.exc_info()[2].tb_next
