@@ -619,7 +619,7 @@ class _StreamWriterThroughServer:
 
     def _get_next_index(self) -> int:
         index = self._index
-        self._index += 1
+        self._index = index + 1
         return index
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
