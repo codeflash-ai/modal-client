@@ -340,11 +340,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
 
 
 def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
-    usable_command_lines = []
-    for cmd in all_usable_commands:
-        cmd_names = " / ".join(cmd.names)
-        usable_command_lines.append(cmd_names)
-
+    usable_command_lines = [" / ".join(cmd.names) for cmd in all_usable_commands]
     return "\n".join(usable_command_lines)
 
 
