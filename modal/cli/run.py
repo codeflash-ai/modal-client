@@ -40,6 +40,13 @@ from .import_refs import (
 )
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
+_ANNOT_PATTERNS = [
+    re.compile(r"typing\.Optional\[([\w.]+)\]"),
+    re.compile(r"typing\.Union\[([\w.]+), NoneType\]"),
+    re.compile(r"([\w.]+) \| None"),
+    re.compile(r"<class '([\w\.]+)'>"),
+]
+
 
 class ParameterMetadata(TypedDict):
     name: str
@@ -109,14 +116,8 @@ def _get_cli_runnable_signature(sig: inspect.Signature, type_hints: dict[str, ty
 def _get_param_type_as_str(annot: Any) -> str:
     """Return annotation as a string, handling various spellings for optional types."""
     annot_str = str(annot)
-    annot_patterns = [
-        r"typing\.Optional\[([\w.]+)\]",
-        r"typing\.Union\[([\w.]+), NoneType\]",
-        r"([\w.]+) \| None",
-        r"<class '([\w\.]+)'>",
-    ]
-    for pat in annot_patterns:
-        m = re.match(pat, annot_str)
+    for pat in _ANNOT_PATTERNS:
+        m = pat.match(annot_str)
         if m is not None:
             return m.group(1)
     return annot_str
@@ -127,6 +128,12 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
 
     Kind of like typer, but using options instead of positional arguments
     """
+    # Reduce attribute and dict key lookups by aliasing
+    sig_empty = inspect.Signature.empty
+    option_get = option_parsers.get
+    click_option = click.option
+
+    # Convert .values() to a list to ensure we don't re-iterate if needed more than once (rare scenario)
     for param in parameters.values():
         param_type_str = _get_param_type_as_str(param["type_hint"])
         param_name = param["name"].replace("_", "-")
@@ -134,19 +141,21 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
         if param_type_str == "bool":
             cli_name += "/--no-" + param_name
 
-        parser = option_parsers.get(param_type_str)
+        parser = option_get(param_type_str)
         if parser is None:
             msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
             raise NoParserAvailable(msg)
         kwargs: Any = {
             "type": parser,
         }
-        if param["default"] is not inspect.Signature.empty:
-            kwargs["default"] = param["default"]
+        default_val = param["default"]
+        if default_val is not sig_empty:
+            kwargs["default"] = default_val
         else:
             kwargs["required"] = True
 
-        click.option(cli_name, **kwargs)(func)
+        # Directly apply as decorator, but discard the returned function each iteration
+        click_option(cli_name, **kwargs)(func)
     return func
 
 
