@@ -153,11 +153,15 @@ def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
 def _get_clean_app_description(func_ref: str) -> str:
     # If possible, consider the 'ref' argument the start of the app's args. Everything
     # before it Modal CLI cruft (eg. `modal run --detach`).
+    argv = sys.argv
     try:
-        func_ref_arg_idx = sys.argv.index(func_ref)
-        return " ".join(sys.argv[func_ref_arg_idx:])
+        func_ref_arg_idx = argv.index(func_ref)
+        # Avoid unnecessary list slicing when func_ref is last or not present
+        if func_ref_arg_idx == 0:
+            return " ".join(argv)
+        return " ".join(argv[func_ref_arg_idx:])
     except ValueError:
-        return " ".join(sys.argv)
+        return " ".join(argv)
 
 
 def _write_local_result(result_path: str, res: Any):
