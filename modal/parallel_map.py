@@ -16,7 +16,6 @@ from modal._utils.async_utils import (
     AsyncOrSyncIterable,
     TimestampPriorityQueue,
     aclosing,
-    async_map,
     async_map_ordered,
     async_merge,
     async_zip,
@@ -1246,14 +1245,29 @@ async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
         On RESOURCE_EXHAUSTED, it will retry indefinitely with exponential backoff up to 30 seconds. Every 10 retriable
         errors, log a warning that the function call is waiting to be created.
         """
-
         return self._spawn_map_inner.aio(*args, **kwargs)
 
-    input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
+    input_gens = [sync_or_async_iter(it) for it in input_iterators]
+    input_gen = async_zip(*input_gens)
 
-    # TODO(gongy): Can improve this by creating async_foreach method which foregoes async_merge.
-    async for _ in async_map(input_gen, _call_with_args, concurrency=256):
-        pass
+    # Unroll the async_map logic to use asyncio.gather in batches for maximal concurrency
+    BATCH_SIZE = 256
+
+    async def batch_generator(aiter, batch_size):
+        batch = []
+        async for item in aiter:
+            batch.append(item)
+            if len(batch) >= batch_size:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
+
+    async for batch in batch_generator(input_gen, BATCH_SIZE):
+        # Launch all calls concurrently for this batch
+        tasks = [asyncio.create_task(_call_with_args(args)) for args in batch]
+        # Ensure exceptions are raised in the main task (gather will propagate them)
+        await asyncio.gather(*tasks)
 
 
 def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
