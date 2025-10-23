@@ -7,6 +7,7 @@ from inspect import Parameter
 from typing import Any
 
 from modal._traceback import extract_traceback
+from modal._type_manager import parameter_serde_registry
 from modal.config import config
 
 try:
@@ -454,9 +455,10 @@ def encode_parameter_value(name: str, python_value: Any) -> api_pb2.ClassParamet
 
 
 def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
-    proto_params: list[api_pb2.ClassParameterValue] = []
-    for param_name, python_value in python_params.items():
-        proto_params.append(encode_parameter_value(param_name, python_value))
+    # Optimize by using list comprehension for faster population of the proto_params list
+    proto_params = [
+        encode_parameter_value(param_name, python_value) for param_name, python_value in python_params.items()
+    ]
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 
