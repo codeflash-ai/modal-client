@@ -6,8 +6,11 @@ import typing
 from inspect import Parameter
 from typing import Any
 
+import modal.client
 from modal._traceback import extract_traceback
+from modal._type_manager import parameter_serde_registry
 from modal.config import config
+from modal.exception import DeserializationError, ExecutionError
 
 try:
     import cbor2  # type: ignore
@@ -28,6 +31,8 @@ from .object import Object
 
 if typing.TYPE_CHECKING:
     import modal.client
+
+_is_local = None
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -106,22 +111,18 @@ def serialize(obj: Any) -> bytes:
 
 def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
-    from ._runtime.execution_context import is_local  # Avoid circular import
-
+    # Use cached is_local() for lower import overhead in hot path
+    is_local = _get_is_local()
     env = "local" if is_local() else "remote"
     try:
         return Unpickler(client, io.BytesIO(s)).load()
     except AttributeError as exc:
-        # We use a different cloudpickle version pre- and post-3.11. Unfortunately cloudpickle
-        # doesn't expose some kind of serialization version number, so we have to guess based
-        # on the error message.
         if "Can't get attribute '_make_function'" in str(exc):
             raise DeserializationError(
                 "Deserialization failed due to a version mismatch between local and remote environments. "
                 "Try changing the Python version in your Modal image to match your local Python version. "
             ) from exc
         else:
-            # On Python 3.10+, AttributeError has `.name` and `.obj` attributes for better custom reporting
             raise DeserializationError(
                 f"Deserialization failed with an AttributeError, {exc}. This is probably because"
                 " you have different versions of a library in your local and remote environments."
@@ -132,11 +133,8 @@ def deserialize(s: bytes, client) -> Any:
         ) from exc
     except Exception as exc:
         if env == "remote":
-            # We currently don't always package the full traceback from errors in the remote entrypoint logic.
-            # So try to include as much information as we can in the main error message.
             more = f": {type(exc)}({str(exc)})"
         else:
-            # When running locally, we can just rely on standard exception chaining.
             more = " (see above for details)"
         raise DeserializationError(
             f"Encountered an error when deserializing an object in the {env} environment{more}."
@@ -463,11 +461,8 @@ def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
 
 def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
     proto_struct = api_pb2.ClassParameterSet.FromString(serialized_params)
-    python_params = {}
-    for param in proto_struct.parameters:
-        python_params[param.name] = parameter_serde_registry.decode(param)
-
-    return python_params
+    # Use dict comprehension for memory & performance efficiency
+    return {param.name: parameter_serde_registry.decode(param) for param in proto_struct.parameters}
 
 
 def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]):
@@ -500,36 +495,29 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
 
 
 def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
-    if function_def.class_parameter_info.format in (
+    fmt = function_def.class_parameter_info.format
+    PICKLE_FORMATS = (
         api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
         api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
-    ):
-        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
+    )
+    if fmt in PICKLE_FORMATS:
         try:
             param_args, param_kwargs = deserialize(serialized_params, _client)
         except DeserializationError as original_exc:
-            # Fallback in case of proto -> pickle downgrades of a parameter serialization format
-            # I.e. FunctionBindParams binding proto serialized params to a function defintion
-            # that now assumes pickled data according to class_parameter_info
             param_args = ()
             try:
                 param_kwargs = deserialize_proto_params(serialized_params)
             except Exception:
                 raise original_exc
-
-    elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
-        param_args = ()  # we use kwargs only for our implicit constructors
+    elif fmt == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
+        param_args = ()
         try:
             param_kwargs = deserialize_proto_params(serialized_params)
         except google.protobuf.message.DecodeError as original_exc:
-            # Fallback in case of pickle -> proto upgrades of a parameter serialization format
-            # I.e. FunctionBindParams binding pickle serialized params to a function defintion
-            # that now assumes proto data according to class_parameter_info
             try:
                 param_args, param_kwargs = deserialize(serialized_params, _client)
             except Exception:
                 raise original_exc
-
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
@@ -635,3 +623,13 @@ def pickle_traceback(exc: BaseException, task_id: str) -> tuple[bytes, bytes]:
         logger.info("Failed to serialize exception traceback.")
 
     return serialized_tb, tb_line_cache
+
+
+def _get_is_local():
+    global _is_local
+    if _is_local is None:
+        # Avoid circular import; we only import once then cache reference
+        from ._runtime.execution_context import is_local
+
+        _is_local = is_local
+    return _is_local
