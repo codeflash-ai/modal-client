@@ -286,10 +286,14 @@ class Config:
             except Exception as e:
                 raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
 
-        if use_env and env_var_key in os.environ:
-            return transform(os.environ[env_var_key])
-        elif profile in _user_config and key in _user_config[profile]:
-            return transform(_user_config[profile][key])
+        if use_env:
+            env_val = os.environ.get(env_var_key)
+            if env_val is not None:
+                return transform(env_val)
+
+        user_profile_config = _user_config.get(profile)
+        if user_profile_config is not None and key in user_profile_config:
+            return transform(user_profile_config[key])
         else:
             return s.default
 
