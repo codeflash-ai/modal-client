@@ -6,14 +6,7 @@ import sys
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
-from typing import (
-    Any,
-    ClassVar,
-    Generic,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import Any, ClassVar, Generic, Optional, TypeVar, Union
 
 import grpclib.client
 from google.protobuf import empty_pb2
@@ -441,7 +434,7 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
 
     def __init__(
         self,
-        wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
+        wrapped_method: grpclib.client.UnaryStreamMethod["RequestType", "ResponseType"],
         client: _Client,
         server_url: str,
     ):

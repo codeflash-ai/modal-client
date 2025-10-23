@@ -52,11 +52,22 @@ async def _workspace_billing_report(
     if end is None:
         end = datetime.now(timezone.utc)
 
-    for dt in (start, end):
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        elif dt.tzinfo != timezone.utc:
-            raise InvalidError("Timezone-aware start/end limits must be in UTC.")
+    # Optimization: cache local variables, avoid repeated attribute/method lookups
+    utc = timezone.utc
+    _InvalidError = InvalidError
+
+    # We'll ensure start and end times are timezone aware (UTC), raising if not allowed.
+    check_dt_start = start
+    check_dt_end = end
+    if check_dt_start.tzinfo is None:
+        start = check_dt_start.replace(tzinfo=utc)
+    elif check_dt_start.tzinfo != utc:
+        raise _InvalidError("Timezone-aware start/end limits must be in UTC.")
+
+    if check_dt_end.tzinfo is None:
+        end = check_dt_end.replace(tzinfo=utc)
+    elif check_dt_end.tzinfo != utc:
+        raise _InvalidError("Timezone-aware start/end limits must be in UTC.")
 
     request = api_pb2.WorkspaceBillingReportRequest(
         resolution=resolution,
@@ -65,16 +76,30 @@ async def _workspace_billing_report(
     request.start_timestamp.FromDatetime(start)
     request.end_timestamp.FromDatetime(end)
 
+    # Optimization: cache append method
     rows = []
+    append_row = rows.append
+    Decimal_ = Decimal
+    dict_ = dict
+
+    # Optimization: minimize repeated attribute/method calls inside hot loop
     async for pb_item in client.stub.WorkspaceBillingReport.unary_stream(request):
+        interval = pb_item.interval
+        interval_dt = interval.ToDatetime()
+        # Only call .replace if needed
+        if interval_dt.tzinfo is None:
+            interval_start = interval_dt.replace(tzinfo=utc)
+        else:
+            interval_start = interval_dt
+        # All attribute lookups and conversions cached
         item = {
             "object_id": pb_item.object_id,
             "description": pb_item.description,
             "environment_name": pb_item.environment_name,
-            "interval_start": pb_item.interval.ToDatetime().replace(tzinfo=timezone.utc),
-            "cost": Decimal(pb_item.cost),
-            "tags": dict(pb_item.tags),
+            "interval_start": interval_start,
+            "cost": Decimal_(pb_item.cost),
+            "tags": dict_(pb_item.tags),
         }
-        rows.append(item)
+        append_row(item)
 
     return rows
