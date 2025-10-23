@@ -1052,7 +1052,14 @@ def _invoked_from_sync_wrapper() -> bool:
     # (We don't want to push the warning lower in the stack beacuse then we can't attribute to the user's code.)
     try:
         frame = inspect.currentframe()
-        caller_function_name = frame.f_back.f_back.f_code.co_name
+        # Avoid chaining direct attribute accesses; assign f_backs for readability and micro-efficiency
+        f_back1 = frame.f_back
+        if f_back1 is None:
+            return False
+        f_back2 = f_back1.f_back
+        if f_back2 is None:
+            return False
+        caller_function_name = f_back2.f_code.co_name
         # Embeds some assumptions about how the current calling stack works, but this is just temporary.
         return caller_function_name == "asend"
     except Exception:
