@@ -4,6 +4,10 @@ from collections.abc import Mapping
 
 from ..exception import InvalidError
 
+_VALID_NAME_RE = re.compile(r"^[a-zA-Z0-9\-_.]+$")
+
+_APP_ID_RE = re.compile(r"^ap-[a-zA-Z0-9]{22}$")
+
 # https://www.rfc-editor.org/rfc/rfc1035
 subdomain_regex = re.compile("^(?![0-9]+$)(?!-)[a-z0-9-]{,63}(?<!-)$")
 
@@ -57,7 +61,7 @@ def check_object_name(name: str, object_type: str) -> None:
         "\n\nNames may contain only alphanumeric characters, dashes, periods, and underscores,"
         " must be shorter than 64 characters, and cannot conflict with App ID strings."
     )
-    if not is_valid_object_name(name):
+    if len(name) > 64 or _VALID_NAME_RE.match(name) is None or _APP_ID_RE.match(name) is not None:
         raise InvalidError(message)
 
 
