@@ -101,6 +101,8 @@ from modal_proto import api_pb2
 from ._utils.logger import configure_logger
 from .exception import InvalidError, NotFoundError
 
+_SUFFIX_RE = re.compile(r"^[a-zA-Z0-9]{1,8}$")
+
 DEFAULT_SERVER_URL = "https://api.modal.com"
 
 
@@ -212,7 +214,7 @@ def _check_value(options: list[str]) -> Callable[[str], str]:
 
 
 def _enforce_suffix_rules(x: str) -> str:
-    if x and not re.match(r"^[a-zA-Z0-9]{1,8}$", x):
+    if x and not _SUFFIX_RE.match(x):
         raise ValueError("Suffix must be an alphanumeric string of no more than 8 characters.")
     return x
 
