@@ -25,6 +25,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
+import modal.client
 from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
@@ -194,9 +195,15 @@ async def retry_transient_errors(
     delay = base_delay
     n_retries = 0
 
-    status_codes = [*RETRYABLE_GRPC_STATUS_CODES, *additional_status_codes]
+    # Avoid rebuilding this every iteration; since these lists are small, tuple is fine.
+    if additional_status_codes:
+        status_codes = tuple(RETRYABLE_GRPC_STATUS_CODES) + tuple(additional_status_codes)
+    else:
+        status_codes = tuple(RETRYABLE_GRPC_STATUS_CODES)
 
+    # Precompute idempotency headers and the initial timestamp outside the loop.
     idempotency_key = str(uuid.uuid4())
+    idempotency_key_sliced = idempotency_key[:8]
 
     t0 = time.time()
     if total_timeout is not None:
@@ -204,20 +211,41 @@ async def retry_transient_errors(
     else:
         total_deadline = None
 
-    metadata = metadata + [("x-modal-timestamp", str(time.time()))]
+    # Prepare static part of metadata; avoid +/list concat in loop
+    # Only the timestamp header needs to be dynamic (per call/retry group), and retry-attempt and delay change per attempt.
+    static_metadata = []
+    static_metadata.append(("x-modal-timestamp", str(t0)))
+    # Carry in any user-provided metadata
+    if metadata:
+        static_metadata.extend(metadata)
+
+    # Build headers that do not change each retry
+    base_attempt_metadata = [
+        ("x-idempotency-key", idempotency_key),
+    ]
+    # This is static for all retries
+    attempt_fn_name = getattr(fn, "name", repr(fn))
+
     while True:
-        attempt_metadata = [
-            ("x-idempotency-key", idempotency_key),
+        # Only per-attempt keys vary here
+        dynamic_metadata = [
             ("x-retry-attempt", str(n_retries)),
-            *metadata,
         ]
+        # Combine for attempt
+        attempt_metadata = base_attempt_metadata + dynamic_metadata + static_metadata
+
         if n_retries > 0:
-            attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
+            # Only append retry-delay header if there has been a retry
+            retry_delay = time.time() - t0
+            attempt_metadata = attempt_metadata + [("x-retry-delay", str(retry_delay))]
+        # Timeout calculation: minimize recomputation of time.time()
         timeouts = []
+        now = time.time()
         if attempt_timeout is not None:
             timeouts.append(attempt_timeout)
-        if total_timeout is not None:
-            timeouts.append(max(total_deadline - time.time(), attempt_timeout_floor))
+        if total_deadline is not None:
+            total_left = max(total_deadline - now, attempt_timeout_floor)
+            timeouts.append(total_left)
         if timeouts:
             timeout = min(timeouts)  # In case the function provided both types of timeouts
         else:
@@ -231,17 +259,17 @@ async def retry_transient_errors(
                 else:
                     raise exc
 
+            # Only compute the "final_attempt" booleans if required
+            final_attempt = False
             if max_retries is not None and n_retries >= max_retries:
                 final_attempt = True
-            elif total_deadline is not None and time.time() + delay + attempt_timeout_floor >= total_deadline:
+            elif total_deadline is not None and (now + delay + attempt_timeout_floor) >= total_deadline:
                 final_attempt = True
-            else:
-                final_attempt = False
 
             if final_attempt:
                 logger.debug(
                     f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                    f"{total_deadline=} for {attempt_fn_name} ({idempotency_key_sliced})"
                 )
                 if isinstance(exc, OSError):
                     raise ConnectionError(str(exc))
@@ -256,7 +284,9 @@ async def retry_transient_errors(
                 # TODO: update to newer version (>=0.4.8) once stable
                 raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
+            logger.debug(
+                f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {attempt_fn_name} ({idempotency_key_sliced})"
+            )
 
             n_retries += 1
 
