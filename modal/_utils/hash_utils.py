@@ -23,8 +23,11 @@ def _update(hashers: Sequence[Callable[[bytes], None]], data: Union[bytes, Binar
                 raise ValueError(f"Only accepts bytes or byte buffer objects, not {type(chunk)} buffers")
             if not chunk:
                 break
-            for hasher in hashers:
-                hasher(chunk)
+            if len(hashers) == 1:
+                hashers[0](chunk)
+            else:
+                for hasher in hashers:
+                    hasher(chunk)
         data.seek(pos)
 
 
