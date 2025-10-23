@@ -199,7 +199,9 @@ _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
 
 def _to_boolean(x: object) -> bool:
-    return str(x).lower() not in {"", "0", "false"}
+    s = str(x).lower()
+    # Compare directly for True values to avoid set and membership test
+    return s not in ("", "0", "false")
 
 
 def _check_value(options: list[str]) -> Callable[[str], str]:
