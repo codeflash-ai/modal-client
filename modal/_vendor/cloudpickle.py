@@ -60,19 +60,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 import _collections_abc
-from collections import ChainMap, OrderedDict
 import abc
 import builtins
 import copyreg
 import dataclasses
 import dis
-from enum import Enum
 import io
 import itertools
 import logging
 import opcode
 import pickle
-from pickle import _getattribute
 import platform
 import struct
 import sys
@@ -82,12 +79,14 @@ import typing
 import uuid
 import warnings
 import weakref
+from collections import ChainMap, OrderedDict
+from enum import Enum
+from pickle import _getattribute
 
 # The following import is required to be imported in the cloudpickle
 # namespace to be able to load pickle files generated with older versions of
 # cloudpickle. See: tests/test_backward_compat.py
 from types import CellType  # noqa: F401
-
 
 # cloudpickle is meant for inter process communication: we expect all
 # communicating processes to run the same Python version hence we favor
@@ -164,7 +163,7 @@ def register_pickle_by_value(module):
     # this introspection yet, in order to avoid a possible breaking change
     # later, we still enforce the presence of module inside sys.modules.
     if module.__name__ not in sys.modules:
-        raise ValueError(f"{module} was not imported correctly, have you used an " "`import` statement to access it?")
+        raise ValueError(f"{module} was not imported correctly, have you used an `import` statement to access it?")
     _PICKLE_BY_VALUE_MODULES.add(module.__name__)
 
 
@@ -1104,16 +1103,21 @@ def _function_setstate(obj, state):
 
 def _class_setstate(obj, state):
     state, slotstate = state
-    registry = None
-    for attrname, attr in state.items():
-        if attrname == "_abc_impl":
-            registry = attr
-        else:
-            setattr(obj, attrname, attr)
+    # Use local reference to setattr for performance gain in tight loop
+    setattr_local = setattr
+    registry = state.get("_abc_impl")
     if registry is not None:
+        # Fast path if registry found; skip _abc_impl during obj attribute restoration
+        for attrname, attr in state.items():
+            if attrname != "_abc_impl":
+                setattr_local(obj, attrname, attr)
+        register_local = obj.register
         for subclass in registry:
-            obj.register(subclass)
-
+            register_local(subclass)
+    else:
+        # No registry; restore all attributes
+        for attrname, attr in state.items():
+            setattr_local(obj, attrname, attr)
     return obj
 
 
