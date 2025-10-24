@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
+import modal.app
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
@@ -201,10 +202,11 @@ class _Obj:
         self,
         cls: "_Cls",
         user_cls: Optional[type],  # this would be None in case of lookups
-        options: Optional[_ServiceOptions],
+        options: Optional["_ServiceOptions"],
         args,
         kwargs,
     ):
+        # Argument validation (unchanged)
         for i, arg in enumerate(args):
             check_valid_cls_constructor_arg(i + 1, arg)
         for key, kwarg in kwargs.items():
@@ -220,15 +222,18 @@ class _Obj:
         self._kwargs = kwargs
         self._options = options
 
+        self._instance_service_function = None
+
     def _cached_service_function(self) -> "modal.functions._Function":
         # Returns a service function for this _Obj, serving all its methods
         # In case of methods without parameters or options, this is simply proxying to the class service function
-        if not self._instance_service_function:
-            assert self._cls._class_service_function
-            self._instance_service_function = self._cls._class_service_function._bind_parameters(
-                self, self._options, self._args, self._kwargs
-            )
-        return self._instance_service_function
+        inst_func = self._instance_service_function
+        if inst_func is None:
+            class_func = self._cls._class_service_function
+            assert class_func
+            inst_func = class_func._bind_parameters(self, self._options, self._args, self._kwargs)
+            self._instance_service_function = inst_func
+        return inst_func
 
     def _get_parameter_values(self) -> dict[str, Any]:
         # binds args and kwargs according to the class constructor signature
