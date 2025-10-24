@@ -933,7 +933,7 @@ class _Parameter:
 
 
 def is_parameter(p: Any) -> bool:
-    return isinstance(p, _Parameter) and p.init
+    return type(p) is _Parameter and p.init
 
 
 def parameter(*, default: Any = _no_default, init: bool = True) -> Any:
