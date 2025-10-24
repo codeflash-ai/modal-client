@@ -618,18 +618,14 @@ def _find_end_of_block(source: _FileUploadSource2, start: int, end: int) -> Opti
     with source() as block_fp:
         block_fp.seek(start)
 
-        num_bytes_read = 0
-        while num_bytes_read < size:
-            chunk = block_fp.read(size - num_bytes_read)
+        chunk = block_fp.read(size)
 
-            if not chunk:
-                break
+        if not chunk:
+            return new_end
 
-            stripped_chunk = chunk.rstrip(b"\0")
-            if stripped_chunk:
-                new_end = start + num_bytes_read + len(stripped_chunk)
-
-            num_bytes_read += len(chunk)
+        stripped_chunk = chunk.rstrip(b"\0")
+        if stripped_chunk:
+            new_end = start + len(stripped_chunk)
 
     return new_end
 
