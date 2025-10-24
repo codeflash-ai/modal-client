@@ -221,9 +221,11 @@ def _make_pip_install_args(
 
 
 def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuilderVersion:
-    if local_config_version := config.get("image_builder_version"):
+    local_config_version = config.get("image_builder_version")
+    if local_config_version:
         version = local_config_version
-        if (env_var := "MODAL_IMAGE_BUILDER_VERSION") in os.environ:
+        env_var = "MODAL_IMAGE_BUILDER_VERSION"
+        if env_var in os.environ:
             version_source = f" (based on your `{env_var}` environment variable)"
         else:
             version_source = f" (based on your local config file at `{user_config_path}`)"
@@ -231,7 +233,8 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
         version_source = ""
         version = server_version
 
-    supported_versions: set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
+    # Get supported versions as a set for fast lookup
+    supported_versions = set(get_args(ImageBuilderVersion))
     if version not in supported_versions:
         if local_config_version is not None:
             update_suggestion = "or remove your local configuration"
@@ -239,7 +242,7 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
             update_suggestion = "your image builder version using the Modal dashboard"
         else:
             update_suggestion = "your client library (pip install --upgrade modal)"
-        preview_versions: set[ImageBuilderVersion] = {"PREVIEW"}
+        preview_versions = {"PREVIEW"}
         suggested_versions = supported_versions - preview_versions
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
