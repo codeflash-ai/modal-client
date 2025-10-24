@@ -60,19 +60,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
 import _collections_abc
-from collections import ChainMap, OrderedDict
 import abc
 import builtins
 import copyreg
 import dataclasses
 import dis
-from enum import Enum
 import io
 import itertools
 import logging
 import opcode
 import pickle
-from pickle import _getattribute
 import platform
 import struct
 import sys
@@ -82,12 +79,14 @@ import typing
 import uuid
 import warnings
 import weakref
+from collections import ChainMap, OrderedDict
+from enum import Enum
+from pickle import _getattribute
 
 # The following import is required to be imported in the cloudpickle
 # namespace to be able to load pickle files generated with older versions of
 # cloudpickle. See: tests/test_backward_compat.py
 from types import CellType  # noqa: F401
-
 
 # cloudpickle is meant for inter process communication: we expect all
 # communicating processes to run the same Python version hence we favor
@@ -164,7 +163,7 @@ def register_pickle_by_value(module):
     # this introspection yet, in order to avoid a possible breaking change
     # later, we still enforce the presence of module inside sys.modules.
     if module.__name__ not in sys.modules:
-        raise ValueError(f"{module} was not imported correctly, have you used an " "`import` statement to access it?")
+        raise ValueError(f"{module} was not imported correctly, have you used an `import` statement to access it?")
     _PICKLE_BY_VALUE_MODULES.add(module.__name__)
 
 
@@ -899,39 +898,46 @@ def _classmethod_reduce(obj):
 
 def _file_reduce(obj):
     """Save a file."""
-    import io
+    # io is imported at the module level for efficiency
 
-    if not hasattr(obj, "name") or not hasattr(obj, "mode"):
+    # Fast-path: check required attributes first in single compound condition
+    if not (hasattr(obj, "name") and hasattr(obj, "mode")):
         raise pickle.PicklingError("Cannot pickle files that do not map to an actual file")
+    # Identity checks for stdin, stdout, stderr
     if obj is sys.stdout:
         return getattr, (sys, "stdout")
     if obj is sys.stderr:
         return getattr, (sys, "stderr")
     if obj is sys.stdin:
         raise pickle.PicklingError("Cannot pickle standard input")
+    # Early closed check
     if obj.closed:
         raise pickle.PicklingError("Cannot pickle closed files")
-    if hasattr(obj, "isatty") and obj.isatty():
+    # Fast-path: combine isatty check and call, only call isatty if it exists
+    is_isatty = getattr(obj, "isatty", None)
+    if is_isatty is not None and is_isatty():
         raise pickle.PicklingError("Cannot pickle files that map to tty objects")
-    if "r" not in obj.mode and "+" not in obj.mode:
-        raise pickle.PicklingError("Cannot pickle files that are not opened for reading: %s" % obj.mode)
+    # Check for read access ("r" or "+")
+    mode = obj.mode
+    if "r" not in mode and "+" not in mode:
+        raise pickle.PicklingError(f"Cannot pickle files that are not opened for reading: {mode}")
 
     name = obj.name
-
     retval = io.StringIO()
 
+    # Efficient file reading, minimizing method calls
     try:
-        # Read the whole file
         curloc = obj.tell()
         obj.seek(0)
         contents = obj.read()
         obj.seek(curloc)
     except OSError as e:
-        raise pickle.PicklingError("Cannot pickle file %s as it cannot be read" % name) from e
+        raise pickle.PicklingError(f"Cannot pickle file {name} as it cannot be read") from e
+
     retval.write(contents)
     retval.seek(curloc)
-
     retval.name = name
+
     return _file_reconstructor, (retval,)
 
 
