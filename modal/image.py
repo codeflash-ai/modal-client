@@ -176,15 +176,24 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[st
     Raises an error if any of the elements are not strings or string lists.
     """
 
-    def is_str_list(x):
-        return isinstance(x, list) and all(isinstance(y, str) for y in x)
+    # Prebind functions for speed
+    isinstance_ = isinstance
+    str_type = str
+    list_type = list
 
     ret: list[str] = []
+    append = ret.append
+    extend = ret.extend
+
     for x in args:
-        if isinstance(x, str):
-            ret.append(x)
-        elif is_str_list(x):
-            ret.extend(x)
+        if isinstance_(x, str_type):
+            append(x)
+        elif isinstance_(x, list_type):
+            # Hoist inner loop: avoid all()
+            for y in x:
+                if not isinstance_(y, str_type):
+                    raise InvalidError(f"{function_name}: {arg_name} must only contain strings")
+            extend(x)
         else:
             raise InvalidError(f"{function_name}: {arg_name} must only contain strings")
     return ret
