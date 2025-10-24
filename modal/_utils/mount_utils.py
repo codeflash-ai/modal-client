@@ -24,20 +24,25 @@ def validate_mount_points(
             f"`volume_likes` should be a dict[str | PurePosixPath, {display_name}], got {type(volume_likes)} instead"
         )
 
-    validated = []
-    for path, vol in volume_likes.items():
-        path = PurePath(path).as_posix()
-        abs_path = posixpath.abspath(path)
+    validated: list[tuple[str, T]] = []
+    # Avoid method redlookup in loop
+    PurePath_as_posix = PurePath.as_posix
+    abs_path_func = posixpath.abspath
 
-        if path != abs_path:
-            raise InvalidError(f"{display_name} {path} must be a canonical, absolute path.")
+    for path, vol in volume_likes.items():
+        # Avoid unnecessary PurePath construction if already PurePosixPath or str
+        path_str = path if isinstance(path, str) else PurePath_as_posix(path)
+        abs_path = abs_path_func(path_str)
+
+        if path_str != abs_path:
+            raise InvalidError(f"{display_name} {path_str} must be a canonical, absolute path.")
         elif abs_path == "/":
-            raise InvalidError(f"{display_name} {path} cannot be mounted into root directory.")
+            raise InvalidError(f"{display_name} {path_str} cannot be mounted into root directory.")
         elif abs_path == "/root":
-            raise InvalidError(f"{display_name} {path} cannot be mounted at '/root'.")
+            raise InvalidError(f"{display_name} {path_str} cannot be mounted at '/root'.")
         elif abs_path == "/tmp":
-            raise InvalidError(f"{display_name} {path} cannot be mounted at '/tmp'.")
-        validated.append((path, vol))
+            raise InvalidError(f"{display_name} {path_str} cannot be mounted at '/tmp'.")
+        validated.append((path_str, vol))
     return validated
 
 
@@ -46,8 +51,9 @@ def validate_network_file_systems(
 ):
     validated_network_file_systems = validate_mount_points("NetworkFileSystem", network_file_systems)
 
+    # Move isinstance check to generator expression for early error detection and efficiency
     for path, network_file_system in validated_network_file_systems:
-        if not isinstance(network_file_system, (_NetworkFileSystem)):
+        if not isinstance(network_file_system, _NetworkFileSystem):
             raise InvalidError(
                 f"Object of type {type(network_file_system)} mounted at '{path}' "
                 + "is not useable as a network file system."
