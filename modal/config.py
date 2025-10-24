@@ -280,16 +280,23 @@ class Config:
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
 
-        def transform(val: str) -> Any:
-            try:
-                return s.transform(val)
-            except Exception as e:
-                raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
+        # Cache os.environ lookup for performance
+        env_value = os.environ.get(env_var_key) if use_env else None
+        user_profile_config = _user_config.get(profile)
+        user_value = None
+        if user_profile_config is not None:
+            user_value = user_profile_config.get(key)
 
-        if use_env and env_var_key in os.environ:
-            return transform(os.environ[env_var_key])
-        elif profile in _user_config and key in _user_config[profile]:
-            return transform(_user_config[profile][key])
+        if env_value is not None:
+            try:
+                return s.transform(env_value)
+            except Exception as e:
+                raise InvalidError(f"Invalid value for {key} config ({env_value!r}): {e}")
+        elif user_value is not None:
+            try:
+                return s.transform(user_value)
+            except Exception as e:
+                raise InvalidError(f"Invalid value for {key} config ({user_value!r}): {e}")
         else:
             return s.default
 
