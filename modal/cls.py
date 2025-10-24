@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional, Sequence, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
+import modal.app
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
@@ -492,8 +493,9 @@ class _Cls(_Object, type_prefix="cs"):
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
     def _get_app(self) -> "modal.app._App":
-        assert self._app is not None
-        return self._app
+        app = self._app
+        assert app is not None
+        return app
 
     def _get_user_cls(self) -> type:
         assert self._user_cls is not None
