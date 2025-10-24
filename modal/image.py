@@ -192,7 +192,10 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[st
 
 def _validate_packages(packages: list[str]) -> bool:
     """Validates that a list of packages does not contain any command-line options."""
-    return not any(pkg.startswith("-") for pkg in packages)
+    for pkg in packages:
+        if pkg.startswith("-"):
+            return False
+    return True
 
 
 def _make_pip_install_args(
