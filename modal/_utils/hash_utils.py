@@ -78,7 +78,7 @@ def get_upload_hashes(
         hashers["md5"] = md5
 
     if hashers:
-        updaters = [h.update for h in hashers.values()]
+        updaters = (h.update for h in hashers.values())
         _update(updaters, data)
 
     if sha256_hex:
