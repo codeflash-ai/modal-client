@@ -22,6 +22,27 @@ from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryC
 from ..secret import _Secret
 from .flash import flash_forward, flash_get_containers, flash_prometheus_autoscaler  # noqa: F401
 
+_ARCH = "x86_64"
+
+_DISTRO = "debian12"
+
+_FILENAME = "cuda-keyring_1.1-1_all.deb"
+
+_CUDA_KEYRING_URL = f"https://developer.download.nvidia.com/compute/cuda/repos/{_DISTRO}/{_ARCH}/{_FILENAME}"
+
+_MAJOR = 12
+
+_MINOR = 8
+
+_MAX_CUDA_VERSION = f"{_MAJOR}-{_MINOR}"
+
+_INSTALL_COMMAND = (
+    f"wget {_CUDA_KEYRING_URL} && "
+    f"dpkg -i {_FILENAME} && "
+    f"rm -f {_FILENAME} && "
+    f"apt-get update && apt-get install -y cuda-nvcc-{_MAX_CUDA_VERSION}"
+)
+
 
 def stop_fetching_inputs():
     """Don't fetch any more inputs from the server, after the current one.
@@ -214,20 +235,7 @@ async def raw_registry_image(
 
 def _install_cuda_command() -> str:
     """Command to install CUDA Toolkit (nvcc) inside a container."""
-    arch = "x86_64"  # instruction set architecture for the CPU, all Modal machines are x86_64
-    distro = "debian12"  # the distribution and version number of our OS (GNU/Linux)
-    filename = "cuda-keyring_1.1-1_all.deb"  # NVIDIA signing key file
-    cuda_keyring_url = f"https://developer.download.nvidia.com/compute/cuda/repos/{distro}/{arch}/{filename}"
-
-    major, minor = 12, 8
-    max_cuda_version = f"{major}-{minor}"
-
-    return (
-        f"wget {cuda_keyring_url} && "
-        + f"dpkg -i {filename} && "
-        + f"rm -f {filename} && "
-        + f"apt-get update && apt-get install -y cuda-nvcc-{max_cuda_version}"
-    )
+    return _INSTALL_COMMAND
 
 
 @synchronizer.create_blocking
