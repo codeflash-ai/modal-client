@@ -362,10 +362,16 @@ def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
             warning_sub_message = f"app with the same name ('{app_name}')"
         else:
             warning_sub_message = "unnamed app"
-        logger.warning(
-            f"You have more than one {warning_sub_message}. "
-            "It's recommended to name all your Apps uniquely when using multiple apps"
-        )
+        # Cache warnings to avoid expensive repeated logger.warning calls
+        if not hasattr(get_active_app_fallback, "_warned_names"):
+            get_active_app_fallback._warned_names = set()
+        cache_key = app_name if app_name is not None else "__unnamed__"
+        if cache_key not in get_active_app_fallback._warned_names:
+            logger.warning(
+                f"You have more than one {warning_sub_message}. "
+                "It's recommended to name all your Apps uniquely when using multiple apps"
+            )
+            get_active_app_fallback._warned_names.add(cache_key)
 
     # If we don't have an active app, create one on the fly
     # The app object is used to carry the app layout etc
