@@ -23,8 +23,11 @@ from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, retry_tran
 
 def _b64url_decode(data: str) -> bytes:
     """Decode a base64url string with missing padding tolerated."""
-    padding = "=" * (-len(data) % 4)
-    return base64.urlsafe_b64decode(data + padding)
+    # Use concatenation only if missing padding is present
+    missing_padding = len(data) % 4
+    if missing_padding:
+        data = data + "=" * (4 - missing_padding)
+    return base64.urlsafe_b64decode(data)
 
 
 def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
