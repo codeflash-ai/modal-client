@@ -173,7 +173,7 @@ class _Object:
         name: Optional[str] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
-        obj = _Object.__new__(cls)
+        obj = cls.__new__(cls)
         obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key, name)
         return obj
 

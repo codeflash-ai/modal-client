@@ -25,6 +25,7 @@ from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from typing_extensions import Self
 
+import modal._functions
 from modal._serialization import serialize_data_format
 from modal_proto import api_pb2
 
@@ -546,6 +547,7 @@ class _Image(_Object, type_prefix="im"):
                     "Cannot provide both build function and Dockerfile commands in the same image layer!"
                 )
 
+            base_images_values = base_images.values()
             base_images_pb2s = [
                 api_pb2.BaseImage(
                     docker_tag=docker_tag,
@@ -561,9 +563,11 @@ class _Image(_Object, type_prefix="im"):
 
             if build_function:
                 build_function_id = build_function.object_id
-                globals = build_function._get_info().get_globals()
-                attrs = build_function._get_info().get_cls_var_attrs()
-                globals = {**globals, **attrs}
+                info = build_function._get_info()
+                globals = info.get_globals()
+                attrs = info.get_cls_var_attrs()
+                if attrs:
+                    globals = {**globals, **attrs}
                 filtered_globals = {}
                 for k, v in globals.items():
                     if isfunction(v):
@@ -574,7 +578,7 @@ class _Image(_Object, type_prefix="im"):
                         # Skip unserializable values for now.
                         logger.warning(
                             f"Skipping unserializable global variable {k} for "
-                            f"{build_function._get_info().function_name}. "
+                            f"{info.function_name}. "
                             "Changes to this variable won't invalidate the image."
                         )
                         continue
@@ -664,18 +668,21 @@ class _Image(_Object, type_prefix="im"):
 
             self._hydrate(image_id, resolver.client, metadata)
             local_mounts = set()
-            for base in base_images.values():
+            for base in base_images_values:
                 local_mounts |= base._serve_mounts
             if context_mount and context_mount.is_local():
                 local_mounts.add(context_mount)
             self._serve_mounts = frozenset(local_mounts)
 
         rep = f"Image({dockerfile_function})"
+        base_added_sets = [base._added_python_source_set for base in base_images.values()]
+        # Efficient union
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
-        obj._added_python_source_set = frozenset.union(
-            frozenset(), *(base._added_python_source_set for base in base_images.values())
-        )
+        if base_added_sets:
+            obj._added_python_source_set = frozenset().union(*base_added_sets)
+        else:
+            obj._added_python_source_set = frozenset()
         return obj
 
     def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
