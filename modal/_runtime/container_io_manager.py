@@ -206,12 +206,15 @@ class IOContext:
     def _prepare_batch_output(self, data: Any) -> list[Any]:
         # validate that output is valid for batch
         if self._is_batched:
-            # assert data is list etc.
-            function_name = self.finalized_function.callable.__name__
-
+            # Save some attribute access by caching locally
+            input_len = len(self.input_ids)
+            # Cache callable for error reporting only if a check fails
             if not isinstance(data, list):
+                function_name = self.finalized_function.callable.__name__
                 raise InvalidError(f"Output of batched function {function_name} must be a list.")
-            if len(data) != len(self.input_ids):
+            data_len = len(data)
+            if data_len != input_len:
+                function_name = self.finalized_function.callable.__name__
                 raise InvalidError(
                     f"Output of batched function {function_name} must be a list of equal length as its inputs."
                 )
