@@ -9,6 +9,13 @@ from typing_extensions import ParamSpec  # Needed for Python 3.9
 
 from ..exception import DeprecationError, PendingDeprecationError
 
+name_map = {
+    "keep_warm": "min_containers",
+    "concurrency_limit": "max_containers",
+    "_experimental_buffer_containers": "buffer_containers",
+    "container_idle_timeout": "scaledown_window",
+}
+
 _INTERNAL_MODULES = ["modal", "synchronicity"]
 
 
@@ -90,24 +97,16 @@ def renamed_parameter(
 
 
 def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
-    name_map = {
-        "keep_warm": "min_containers",
-        "concurrency_limit": "max_containers",
-        "_experimental_buffer_containers": "buffer_containers",
-        "container_idle_timeout": "scaledown_window",
-    }
-
     @functools.wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
 
         substitutions = []
         old_params_used = name_map.keys() & mut_kwargs.keys()
-        for old_param, new_param in name_map.items():
-            if old_param in old_params_used:
-                new_param = name_map[old_param]
-                mut_kwargs[new_param] = mut_kwargs.pop(old_param)
-                substitutions.append(f"- {old_param} -> {new_param}")
+        for old_param in old_params_used:
+            new_param = name_map[old_param]
+            mut_kwargs[new_param] = mut_kwargs.pop(old_param)
+            substitutions.append(f"- {old_param} -> {new_param}")
 
         if substitutions:
             substitution_string = "\n".join(substitutions)
