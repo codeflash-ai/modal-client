@@ -254,11 +254,12 @@ class _Secret(_Object, type_prefix="st"):
         if not isinstance(env_dict, dict):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
-        if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
-            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
-        if not all(isinstance(v, str) for v in env_dict_filtered.values()):
-            raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+        env_dict_filtered: dict[str, str] = {}
+        for k, v in env_dict.items():
+            if v is not None:
+                if not (isinstance(k, str) and isinstance(v, str)):
+                    raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
+                env_dict_filtered[k] = v
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             if resolver.app_id is not None:
