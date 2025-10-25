@@ -133,12 +133,27 @@ class _Client:
     async def _open(self):
         self._closed = False
         assert self._stub is None
+
+        # Optimize _get_metadata and get_stub with concurrent execution
+        loop = asyncio.get_running_loop()
+
+        # Precompute metadata (keeps behavioral preservation)
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
+
+        # Set up context and event loop directly
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
-        self._cancellation_context_event_loop = asyncio.get_running_loop()
-        await self._cancellation_context.__aenter__()
+        self._cancellation_context_event_loop = loop
+
+        # Run context setup and stub creation concurrently for better IO utilization
+        # They have no dependencies between each other
+        context_enter = self._cancellation_context.__aenter__()
+        stub_create = self.get_stub(self.server_url)
+        context_result, stub_result = await asyncio.gather(context_enter, stub_create)
+
         self._connection_manager = ConnectionManager(client=self, metadata=metadata)
-        self._stub = await self.get_stub(self.server_url)
+
+        self._stub = stub_result
+
         self._auth_token_manager = _AuthTokenManager(self.stub)
         self._owner_pid = os.getpid()
 
