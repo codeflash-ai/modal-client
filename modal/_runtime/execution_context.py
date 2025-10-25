@@ -8,6 +8,8 @@ from modal.exception import InvalidError
 
 from .container_io_manager import _ContainerIOManager
 
+_IS_LOCAL = not _ContainerIOManager._singleton
+
 
 def is_local() -> bool:
     """Returns if we are currently on the machine launching/deploying a Modal app
@@ -15,7 +17,7 @@ def is_local() -> bool:
     Returns `True` when executed locally on the user's machine.
     Returns `False` when executed from a Modal container in the cloud.
     """
-    return not _ContainerIOManager._singleton
+    return _IS_LOCAL
 
 
 async def _interact() -> None:
