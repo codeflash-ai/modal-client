@@ -20,11 +20,17 @@ from modal_proto.task_command_router_grpc import TaskCommandRouterStub
 
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, connect_channel, retry_transient_errors
 
+_B64_PADDING = ["", "=", "===", "=="]
+
 
 def _b64url_decode(data: str) -> bytes:
     """Decode a base64url string with missing padding tolerated."""
-    padding = "=" * (-len(data) % 4)
-    return base64.urlsafe_b64decode(data + padding)
+    pad_len = -len(data) % 4
+    padding = _B64_PADDING[pad_len]
+    # Avoid creating a new string if no padding is needed
+    if padding:
+        data += padding
+    return base64.urlsafe_b64decode(data)
 
 
 def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
@@ -33,14 +39,15 @@ def _parse_jwt_expiration(jwt_token: str) -> Optional[float]:
     This is best-effort; if parsing fails or claim missing, returns None.
     """
     try:
-        parts = jwt_token.split(".")
-        if len(parts) != 3:
-            return None
-        payload_b = _b64url_decode(parts[1])
-        payload = json.loads(payload_b)
-        exp = payload.get("exp")
+        # Avoids an extra local and repeated splits: only split once and unpack directly
+        header, payload, signature = jwt_token.split(".")
+        payload_b = _b64url_decode(payload)
+        payload_obj = json.loads(payload_b)
+        exp = payload_obj.get("exp")
         if isinstance(exp, (int, float)):
             return float(exp)
+    except ValueError:
+        return None  # Not exactly 3 segments
     except Exception:
         # Avoid raising on malformed tokens; fall back to server-driven refresh logic.
         logger.warning("Failed to parse JWT expiration")
