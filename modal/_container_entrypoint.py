@@ -116,7 +116,16 @@ class UserCodeEventLoop:
     """
 
     def __enter__(self):
-        self.loop = asyncio.new_event_loop()
+        # Use get_event_loop if an event loop exists, otherwise create one and set as current.
+        # This avoids unnecessary creation and speeds up repeated use.
+        try:
+            self.loop = asyncio.get_event_loop()
+            if self.loop.is_closed():
+                self.loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self.loop)
+        except RuntimeError:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
         self.tasks = set()
         return self
 
