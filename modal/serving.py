@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import multiprocessing
 import platform
 from collections.abc import AsyncGenerator
@@ -45,7 +46,8 @@ async def _restart_serve(
     show_progress = output_mgr is not None
     p = ctx.Process(target=_run_serve, args=(import_ref, existing_app_id, is_ready, environment_name, show_progress))
     p.start()
-    await asyncify(is_ready.wait)(timeout)
+    # Use asyncio.to_thread to avoid blocking the event loop with is_ready.wait
+    await asyncio.to_thread(is_ready.wait, timeout)
     # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
     # the child process might build a huge image or similar
     return p
