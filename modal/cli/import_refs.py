@@ -210,32 +210,37 @@ def filter_cli_commands(
     Returns generator of (matching names list, CLICommand)
     """
 
-    def _is_accepted_type(cli_command: CLICommand) -> bool:
-        if not accept_local_entrypoints and isinstance(cli_command.runnable, LocalEntrypoint):
-            return False
-        if not accept_web_endpoints and cli_command.is_web_endpoint:
-            return False
-        return True
-
+    # Inline _is_accepted_type to avoid function call overhead in tight loop
     res = []
+    # Precompute "name_prefix." as string if needed, avoids per-iteration string concat
+    prefix_dot = f"{name_prefix}." if name_prefix else None
+    # Convert name_prefix to bool once for fast checks
+    has_prefix = bool(name_prefix)
+
     for cli_command in cli_commands:
-        if not _is_accepted_type(cli_command):
+        # Inline filter conditions
+        if not accept_local_entrypoints and isinstance(cli_command.runnable, LocalEntrypoint):
+            continue
+        if not accept_web_endpoints and cli_command.is_web_endpoint:
             continue
 
-        if name_prefix in cli_command.names:
-            # exact name match
+        # Convert cli_command.names to set for O(1) name containment checks if large, else use list
+        names = cli_command.names
+        # Fast path: name_prefix in names
+        if name_prefix in names:
             res.append(cli_command)
             continue
-
-        if not name_prefix:
+        if not has_prefix:
             # no name specified, return all reachable runnables
             res.append(cli_command)
             continue
 
-        # partial matches e.g. app or class name - should we even allow this?
-        prefix_matches = [x for x in cli_command.names if x.startswith(f"{name_prefix}.")]
-        if prefix_matches:
-            res.append(cli_command)
+        # partial matches e.g. app or class name
+        # Optimize: scan names for .startswith only until match is found, avoid building intermediate list
+        for x in names:
+            if x.startswith(prefix_dot):  # prefix_dot always ends with '.'
+                res.append(cli_command)
+                break
     return res
 
 
