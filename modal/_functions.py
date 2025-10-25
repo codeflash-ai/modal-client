@@ -97,6 +97,14 @@ if TYPE_CHECKING:
     import modal.app
     import modal.cls
 
+_DATA_FORMAT_ASGI = api_pb2.DATA_FORMAT_ASGI
+
+_DATA_FORMAT_PICKLE = api_pb2.DATA_FORMAT_PICKLE
+
+_DATA_FORMAT_CBOR = api_pb2.DATA_FORMAT_CBOR
+
+_DATA_FORMAT_GENERATOR_DONE = api_pb2.DATA_FORMAT_GENERATOR_DONE
+
 MAX_INTERNAL_FAILURE_COUNT = 8
 TERMINAL_STATUSES = (
     api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
@@ -607,16 +615,16 @@ class _FunctionSpec:
 
 def _get_supported_input_output_formats(is_web_endpoint: bool, is_generator: bool, restrict_output: bool):
     if is_web_endpoint:
-        supported_input_formats = [api_pb2.DATA_FORMAT_ASGI]
-        supported_output_formats = [api_pb2.DATA_FORMAT_ASGI, api_pb2.DATA_FORMAT_GENERATOR_DONE]
+        supported_input_formats = [_DATA_FORMAT_ASGI]
+        supported_output_formats = [_DATA_FORMAT_ASGI, _DATA_FORMAT_GENERATOR_DONE]
     else:
-        supported_input_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+        supported_input_formats = [_DATA_FORMAT_PICKLE, _DATA_FORMAT_CBOR]
         if restrict_output:
-            supported_output_formats = [api_pb2.DATA_FORMAT_CBOR]
+            supported_output_formats = [_DATA_FORMAT_CBOR]
         else:
-            supported_output_formats = [api_pb2.DATA_FORMAT_PICKLE, api_pb2.DATA_FORMAT_CBOR]
+            supported_output_formats = [_DATA_FORMAT_PICKLE, _DATA_FORMAT_CBOR]
         if is_generator:
-            supported_output_formats.append(api_pb2.DATA_FORMAT_GENERATOR_DONE)
+            supported_output_formats.append(_DATA_FORMAT_GENERATOR_DONE)
     return supported_input_formats, supported_output_formats
 
 
