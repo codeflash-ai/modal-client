@@ -72,9 +72,9 @@ def renamed_parameter(
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
-            if old_name in mut_kwargs:
-                mut_kwargs[new_name] = mut_kwargs.pop(old_name)
+            # Avoid referencing kwargs via locals(); just use kwargs directly (much faster and safe here)
+            if old_name in kwargs:
+                kwargs[new_name] = kwargs.pop(old_name)
                 func_name = func.__qualname__.removeprefix("_")  # Avoid confusion when synchronicity-wrapped
                 message = (
                     f"The '{old_name}' parameter of `{func_name}` has been renamed to '{new_name}'."
