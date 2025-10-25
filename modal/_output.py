@@ -63,9 +63,11 @@ class FunctionQueuingColumn(ProgressColumn):
         super().__init__()
 
     def render(self, task) -> Text:
-        self.lag = max(task.completed - task.elapsed, self.lag)
+        new_lag = task.completed - task.elapsed
+        if new_lag > self.lag:
+            self.lag = new_lag
         if task.finished:
-            elapsed = max(task.finished_time, task.completed)
+            elapsed = task.finished_time if task.finished_time > task.completed else task.completed
         else:
             elapsed = task.elapsed + self.lag
         delta = timedelta(seconds=int(elapsed))
