@@ -174,32 +174,46 @@ def read_ignorefile(reader: TextIO) -> list[str]:
 
     excludes: list[str] = []
 
+    # Precomputed variables for performance
+    ossep = os.sep
+    replace_needed = ossep != "/"
+    normpath = os.path.normpath
+
+    # Avoid looking up str methods repeatedly
+    str_startswith = str.startswith
+    str_strip = str.strip
+    str_replace = str.replace
+
+    # Minor optimization: localize append for tight loop
+    append_excludes = excludes.append
+
     for line in reader:
         pattern = line.rstrip("\n\r")
 
         # Lines starting with "#" are ignored
-        if pattern.startswith("#"):
+        if str_startswith(pattern, "#"):
             continue
 
-        pattern = pattern.strip()
-        if pattern == "":
+        pattern = str_strip(pattern)
+        if not pattern:
             continue
 
-        # Normalize absolute paths to paths relative to the context
-        # (taking care of '!' prefix)
         invert = pattern[0] == "!"
         if invert:
-            pattern = pattern[1:].strip()
+            pattern = str_strip(pattern[1:])
 
-        if len(pattern) > 0:
-            pattern = os.path.normpath(pattern)
-            pattern = pattern.replace(os.sep, "/")
+        if pattern:
+            # os.path.normpath only if likely necessary, for maximum throughput
+            pattern = normpath(pattern)
+            # Only replace if the system separator is not "/"
+            if replace_needed:
+                pattern = str_replace(pattern, ossep, "/")
             if len(pattern) > 1 and pattern[0] == "/":
                 pattern = pattern[1:]
 
         if invert:
             pattern = "!" + pattern
 
-        excludes.append(pattern)
+        append_excludes(pattern)
 
     return excludes
