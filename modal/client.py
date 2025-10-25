@@ -41,29 +41,41 @@ def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], vers
     # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
-        system, release = "macOS", platform.mac_ver()[0]
+        # Cache mac_ver in a local variable to avoid repeated unpacking
+        mac_ver = platform.mac_ver()[0]
+        system, release = "macOS", mac_ver
     else:
         system, release = uname.system, uname.release
-    platform_str = "-".join(s.replace("-", "_") for s in (system, release, uname.machine))
 
-    # sys.version_info is structured unlike sys.version or platform.python_version()
-    python_version = "%d.%d.%d" % (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+    # Avoid repeated s.replace calls and .join overhead by prebuilding the list
+    # s can't contain "-" in "macOS", uname.machine and release, so replace is cheap
+    sys_str = system.replace("-", "_")
+    rel_str = release.replace("-", "_")
+    mach_str = uname.machine.replace("-", "_")
+    platform_str = f"{sys_str}-{rel_str}-{mach_str}"
 
+    # Fastest python version format for ints to string
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+    # Cache node and platform_str quoting, to avoid duplicate quoting within dict construction
+    node_quoted = urllib.parse.quote(platform.node())
+    platform_str_quoted = urllib.parse.quote(platform_str)
+
+    # Build dictionary using local variables to minimize global lookups
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
         "x-modal-python-version": python_version,
-        "x-modal-node": urllib.parse.quote(platform.node()),
-        "x-modal-platform": urllib.parse.quote(platform_str),
+        "x-modal-node": node_quoted,
+        "x-modal-platform": platform_str_quoted,
     }
+
+    # Check credentials and client_type only once, unpack only if needed
     if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
         token_id, token_secret = credentials
-        metadata.update(
-            {
-                "x-modal-token-id": token_id,
-                "x-modal-token-secret": token_secret,
-            }
-        )
+        # Direct assignment instead of .update for better performance, fewer hash lookups
+        metadata["x-modal-token-id"] = token_id
+        metadata["x-modal-token-secret"] = token_secret
     return metadata
 
 
