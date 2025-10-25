@@ -1,7 +1,10 @@
 # Copyright Modal Labs 2022
 import contextlib
+import fcntl
 import os
+import struct
 import sys
+import termios
 from typing import Optional
 
 from modal_proto import api_pb2
@@ -12,11 +15,7 @@ def get_winsz(fd=None) -> tuple[Optional[int], Optional[int]]:
         if fd is None:
             fd = sys.stdin.fileno()
 
-        import fcntl
-        import struct
-        import termios
-
-        return struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, "1234"))  # type: ignore
+        return struct.unpack("hh", fcntl.ioctl(fd, termios.TIOCGWINSZ, b"\0\0\0\0"))  # type: ignore
     except Exception:
         return None, None
 
