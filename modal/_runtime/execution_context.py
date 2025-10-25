@@ -74,10 +74,7 @@ def current_function_call_id() -> Optional[str]:
 
 def current_attempt_token() -> Optional[str]:
     # This ContextVar isn't useful to expose to users.
-    try:
-        return _current_attempt_token.get()
-    except LookupError:
-        return None
+    return _current_attempt_token.get(None)
 
 
 def _set_current_context_ids(
