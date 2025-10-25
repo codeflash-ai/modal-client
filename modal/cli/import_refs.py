@@ -210,32 +210,29 @@ def filter_cli_commands(
     Returns generator of (matching names list, CLICommand)
     """
 
-    def _is_accepted_type(cli_command: CLICommand) -> bool:
-        if not accept_local_entrypoints and isinstance(cli_command.runnable, LocalEntrypoint):
-            return False
-        if not accept_web_endpoints and cli_command.is_web_endpoint:
-            return False
-        return True
-
+    # Inline _is_accepted_type logic to avoid function call overhead in the hot loop
     res = []
+    f_name_prefixdot = f"{name_prefix}." if name_prefix else None
     for cli_command in cli_commands:
-        if not _is_accepted_type(cli_command):
+        if (not accept_local_entrypoints and isinstance(cli_command.runnable, LocalEntrypoint)) or (
+            not accept_web_endpoints and cli_command.is_web_endpoint
+        ):
             continue
 
+        # Exact match first
         if name_prefix in cli_command.names:
-            # exact name match
             res.append(cli_command)
             continue
 
+        # No prefix matches all
         if not name_prefix:
-            # no name specified, return all reachable runnables
             res.append(cli_command)
             continue
 
-        # partial matches e.g. app or class name - should we even allow this?
-        prefix_matches = [x for x in cli_command.names if x.startswith(f"{name_prefix}.")]
-        if prefix_matches:
+        # Fast partial match: short-circuit if any name startswith the prepared f"{name_prefix}."
+        if any(name.startswith(f_name_prefixdot) for name in cli_command.names):
             res.append(cli_command)
+
     return res
 
 
@@ -356,16 +353,22 @@ def infer_runnable(
     cli_commands: list[CLICommand], object_path: str, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Optional[Runnable]:
     filtered_commands = filter_cli_commands(cli_commands, object_path, accept_local_entrypoint, accept_webhook)
-    if len(filtered_commands) == 0:
+    if not filtered_commands:
         return None
 
-    filtered_commands_by_prio = defaultdict(list)
-    for cmd in filtered_commands:
-        filtered_commands_by_prio[cmd.priority].append(cmd)
+    # Find min priority first for efficiency; avoid intermediate defaultdict/list object growth.
+    min_priority = None
+    min_priority_cmds = None
 
-    _, highest_prio_commands = min(filtered_commands_by_prio.items())
-    if len(highest_prio_commands) == 1:
-        cli_command = highest_prio_commands[0]
-        return cli_command.runnable
+    for cmd in filtered_commands:
+        prio = cmd.priority
+        if min_priority is None or prio < min_priority:
+            min_priority = prio
+            min_priority_cmds = [cmd]
+        elif prio == min_priority:
+            min_priority_cmds.append(cmd)
+
+    if min_priority_cmds and len(min_priority_cmds) == 1:
+        return min_priority_cmds[0].runnable
 
     return None
