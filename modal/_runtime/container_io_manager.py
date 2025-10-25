@@ -280,15 +280,21 @@ class IOContext:
     async def output_items_cancellation(self, started_at: float):
         output_created_at = time.time()
         # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+        # OPTIMIZATION: Pre-create the GenericResult object, since its args are constant.
+        generic_result_terminated = api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+        input_ids = self.input_ids
+        retry_counts = self.retry_counts
+        # Use local variables to reduce attribute lookup overhead in tight loop.
+        FunctionPutOutputsItem = api_pb2.FunctionPutOutputsItem
         return [
-            api_pb2.FunctionPutOutputsItem(
+            FunctionPutOutputsItem(
                 input_id=input_id,
                 input_started_at=started_at,
                 output_created_at=output_created_at,
-                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
+                result=generic_result_terminated,
                 retry_count=retry_count,
             )
-            for input_id, retry_count in zip(self.input_ids, self.retry_counts)
+            for input_id, retry_count in zip(input_ids, retry_counts)
         ]
 
     def _determine_output_format(self, input_format: "api_pb2.DataFormat.ValueType") -> "api_pb2.DataFormat.ValueType":
