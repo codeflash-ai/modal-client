@@ -12,7 +12,8 @@ from rich.text import Text
 
 from modal_proto import api_pb2
 
-from .._output import OutputManager, get_app_logs_loop, make_console
+from .._output import (OutputManager, _default_console, get_app_logs_loop,
+                       make_console)
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env
@@ -65,7 +66,8 @@ def _plain(text: Union[Text, str]) -> str:
 
 
 def is_tty() -> bool:
-    return make_console().is_terminal
+    # Use cached console for default arguments, avoiding repeated instantiations
+    return _default_console.is_terminal
 
 
 def display_table(
