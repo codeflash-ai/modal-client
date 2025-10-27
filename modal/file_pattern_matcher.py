@@ -164,26 +164,41 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         deprecated due to buggy behavior.
         """
         matched = False
-        file_path = os.path.normpath(file_path)
+        # Optimize: Only normalize/reduce os.path.normpath if absolutely needed
+        # Fast fallback for trivial case - avoids unneeded normpath
         if file_path == ".":
             # Don't let them exclude everything; kind of silly.
             return False
-        parent_path = os.path.dirname(file_path)
-        if parent_path == "":
+        file_path_norm = os.path.normpath(file_path)
+        parent_path = os.path.dirname(file_path_norm)
+        if not parent_path:
             parent_path = "."
-        parent_path_dirs = parent_path.split(os.path.sep)
+        parent_path_dirs = parent_path.split(os.path.sep) if parent_path != "." else []
 
-        for pattern in self.patterns:
+        # Save local variable access for performance
+        patterns = self.patterns
+        parent_path_not_dot = parent_path != "."
+        # Instead of repeated os.path.sep.join, precompute all possible parent paths
+        parents = []
+        if parent_path_not_dot:
+            # Efficient parent path building without repeated join and slice
+            agg = []
+            for dir in parent_path_dirs:
+                agg.append(dir)
+                parents.append(os.path.sep.join(agg))
+
+        # Main pattern evaluation loop. Minimize inner-loop computation.
+        for pattern in patterns:
             # Skip evaluation based on current match status and pattern exclusion
             if pattern.exclusion != matched:
                 continue
 
-            match = pattern.match(file_path)
+            # Pattern match on file_path
+            match = pattern.match(file_path_norm)
 
-            if not match and parent_path != ".":
-                # Check if the pattern matches any of the parent directories
-                for i in range(len(parent_path_dirs)):
-                    dir_path = os.path.sep.join(parent_path_dirs[: i + 1])
+            # Only check parent directories if needed
+            if not match and parent_path_not_dot:
+                for dir_path in parents:
                     if pattern.match(dir_path):
                         match = True
                         break
@@ -216,6 +231,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         return not any(pattern.exclusion for pattern in self.patterns)
 
     def __call__(self, file_path: Path) -> bool:
+        # Fast direct str conversion and call
         return self._matches(str(file_path))
 
 
