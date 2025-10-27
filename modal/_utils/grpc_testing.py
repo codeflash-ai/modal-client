@@ -153,7 +153,12 @@ class InterceptionContext:
         if not hasattr(self._servicer, method_name):
             # we check this to prevent things like `assert ctx.get_requests("ASdfFunctionCreate") == 0` passing
             raise ValueError(f"{method_name} not in MockServicer - did you spell it right?")
-        return [msg for _method_name, msg in self.calls if _method_name == method_name]
+        if not hasattr(self, "_calls_by_method"):
+            d: dict[str, list[Any]] = defaultdict(list)
+            for mname, msg in self.calls:
+                d[mname].append(msg)
+            self._calls_by_method = d
+        return list(self._calls_by_method.get(method_name, []))
 
     def _add_recv(self, method_name: str, msg):
         self.calls.append((method_name, msg))
