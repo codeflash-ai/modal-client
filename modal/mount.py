@@ -32,6 +32,8 @@ from .config import config, logger
 from .exception import ExecutionError, InvalidError
 from .file_pattern_matcher import FilePatternMatcher
 
+_version_re = re.compile(r"^([\d\.\w]+)")
+
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 
@@ -58,7 +60,8 @@ See https://modal.com/docs/guide/modal-1-0-migration for more details.
 def client_mount_name() -> str:
     """Get the deployed name of the client package mount."""
     # Strip any annotations (i.e. `+{git_hash}`) becuase the + is not valid in a mount name
-    if m := re.match(r"^([\d\.\w]+)", __version__):
+    m = _version_re.match(__version__)
+    if m:
         version = m.group(1)
     else:
         raise ExecutionError(f"Modal client has improperly formatted version: {__version__!r}")
