@@ -2,6 +2,10 @@
 from datetime import datetime, tzinfo
 from typing import Optional, Union
 
+# Cache the local time zone since it shouldn't change during runtime,
+# this avoids repeated system calls to determine tzinfo.
+_local_tz: tzinfo = datetime.now().astimezone().tzinfo
+
 
 def locale_tz() -> tzinfo:
     return datetime.now().astimezone().tzinfo
@@ -29,7 +33,7 @@ def as_timestamp(arg: Optional[Union[datetime, str]]) -> float:
 
 
 def timestamp_to_localized_dt(ts: float) -> datetime:
-    return datetime.fromtimestamp(ts, tz=locale_tz())
+    return datetime.fromtimestamp(ts, tz=_local_tz)
 
 
 def timestamp_to_localized_str(ts: float, isotz: bool = True) -> Optional[str]:
