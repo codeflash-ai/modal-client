@@ -718,14 +718,14 @@ MODAL_PACKAGES = ["modal", "modal_proto", "modal_version"]
 
 def _is_modal_path(remote_path: PurePosixPath):
     path_prefix = remote_path.parts[:3]
-    remote_python_paths = [("/", "root"), ("/", "pkg")]
-    for base in remote_python_paths:
-        is_modal_path = path_prefix in [base + (mod,) for mod in MODAL_PACKAGES] or path_prefix == base + (
-            "synchronicity",
-        )
-        if is_modal_path:
-            return True
-    return False
+    if not hasattr(_is_modal_path, "_modal_path_prefixes"):
+        remote_python_paths = [("/", "root"), ("/", "pkg")]
+        prefixes = set()
+        for base in remote_python_paths:
+            prefixes.update(base + (mod,) for mod in MODAL_PACKAGES)
+            prefixes.add(base + ("synchronicity",))
+        _is_modal_path._modal_path_prefixes = prefixes
+    return path_prefix in _is_modal_path._modal_path_prefixes
 
 
 REMOTE_PACKAGES_PATH = "/__modal/deps"
