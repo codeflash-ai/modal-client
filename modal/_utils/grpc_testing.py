@@ -144,7 +144,7 @@ class InterceptionContext:
         # returns the payload of the request
         for i, (_method_name, msg) in enumerate(self.calls):
             if _method_name == method_name:
-                self.calls = self.calls[i + 1 :]
+                del self.calls[: i + 1]
                 return msg
 
         raise KeyError(f"No message of that type in call list: {self.calls}")
