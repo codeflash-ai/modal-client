@@ -16,28 +16,27 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    MofNCompleteColumn,
-    Progress,
-    ProgressColumn,
-    TaskID,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
+from rich.progress import (BarColumn, DownloadColumn, MofNCompleteColumn,
+                           Progress, ProgressColumn, TaskID, TextColumn,
+                           TimeElapsedColumn, TimeRemainingColumn,
+                           TransferSpeedColumn)
 from rich.spinner import Spinner
 from rich.text import Text
 
 from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
-from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.grpc_utils import (RETRYABLE_GRPC_STATUS_CODES,
+                                retry_transient_errors)
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .config import logger
+
+_default_console = Console(
+    stderr=False,
+    highlight=True,
+    force_jupyter=False,
+)
 
 if platform.system() == "Windows":
     default_spinner = "line"
