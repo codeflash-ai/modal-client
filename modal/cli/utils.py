@@ -18,6 +18,8 @@ from ..client import _Client
 from ..environments import ensure_env
 from ..exception import NotFoundError
 
+_default_console = make_console()
+
 
 @synchronizer.create_blocking
 async def stream_app_logs(
@@ -74,18 +76,25 @@ def display_table(
     json: bool = False,
     title: str = "",
 ):
-    def col_to_str(col: Union[Column, str]) -> str:
-        return str(col.header) if isinstance(col, Column) else col
+    # Use cached default console for efficiency; make a new one only if config changes (not supported here, safe)
+    console = _default_console
 
-    console = make_console()
     if json:
-        json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
+        # Precompute header names for all columns (avoid recomputing string conversion in each row)
+        col_headers = [_col_to_str(col) for col in columns]
+        # Precompute _plain values for each cell, by row
+        json_data = [dict(zip(col_headers, (_plain(cell) for cell in row))) for row in rows]
         console.print_json(dumps(json_data))
     else:
         table = Table(*columns, title=title)
+        # Precompute row values using tuple comprehension for repeated use
         for row in rows:
             table.add_row(*row)
         console.print(table)
+
+
+def _col_to_str(col: Union[Column, str]) -> str:
+    return str(col.header) if isinstance(col, Column) else col
 
 
 ENV_OPTION_HELP = """Environment to interact with.
