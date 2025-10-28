@@ -57,7 +57,7 @@ async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
         ["git", "remote", "get-url", "origin"],
     ]
 
-    tasks = (run_command_fallible(cmd) for cmd in commands)
+    tasks = [asyncio.create_task(run_command_fallible(cmd)) for cmd in commands]
     (log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
 
     if not branch:
