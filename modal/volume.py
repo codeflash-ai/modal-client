@@ -94,10 +94,10 @@ class FileEntry:
     @classmethod
     def _from_proto(cls, proto: api_pb2.FileEntry) -> "FileEntry":
         return cls(
-            path=proto.path,
-            type=FileEntryType(proto.type),
-            mtime=proto.mtime,
-            size=proto.size,
+            proto.path,
+            FileEntryType(proto.type),
+            proto.mtime,
+            proto.size,
         )
 
 
