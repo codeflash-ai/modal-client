@@ -4,6 +4,9 @@
 # This is because aiohttp is a pretty big dependency that adds significant latency when imported
 
 import asyncio
+import fcntl
+import socket
+import struct
 from collections.abc import AsyncGenerator
 from typing import Any, Callable, NoReturn, Optional, cast
 
@@ -17,6 +20,8 @@ from modal.exception import ExecutionError, InvalidError
 from modal.experimental import stop_fetching_inputs
 
 from .execution_context import current_attempt_token, current_function_call_id
+
+_sioctl_request = 0x8915
 
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
@@ -263,18 +268,19 @@ def magic_fastapi_app(fn: Callable[..., Any], method: str, docs: bool):
 
 def get_ip_address(ifname: bytes):
     """Get the IP address associated with a network interface in Linux."""
-    import fcntl
-    import socket
-    import struct
+    # Avoid repeated imports and constants allocation on every call
 
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    return socket.inet_ntoa(
-        fcntl.ioctl(
+    try:
+        packed_ifname = struct.pack("256s", ifname[:15])
+        res = fcntl.ioctl(
             s.fileno(),
-            0x8915,  # SIOCGIFADDR
-            struct.pack("256s", ifname[:15]),
-        )[20:24]
-    )
+            _sioctl_request,
+            packed_ifname,
+        )
+        return socket.inet_ntoa(res[20:24])
+    finally:
+        s.close()
 
 
 def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
