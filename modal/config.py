@@ -275,23 +275,20 @@ class Config:
         2. Settings in the user's .toml configuration file
         3. The default value of the setting
         """
-        if profile is None:
-            profile = _profile
+        profile = profile if profile is not None else _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
 
-        def transform(val: str) -> Any:
-            try:
-                return s.transform(val)
-            except Exception as e:
-                raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
+        if use_env:
+            env_value = os.environ.get(env_var_key)
+            if env_value is not None:
+                return self._transform_value(s, key, env_value)
 
-        if use_env and env_var_key in os.environ:
-            return transform(os.environ[env_var_key])
-        elif profile in _user_config and key in _user_config[profile]:
-            return transform(_user_config[profile][key])
-        else:
-            return s.default
+        profile_config = _user_config.get(profile)
+        if profile_config and key in profile_config:
+            return self._transform_value(s, key, profile_config[key])
+
+        return s.default
 
     def override_locally(self, key: str, value: str):
         # Override setting in this process by overriding environment variable for the setting
@@ -313,6 +310,13 @@ class Config:
 
     def to_dict(self):
         return {key: self.get(key) for key in sorted(_SETTINGS)}
+
+    @staticmethod
+    def _transform_value(s, key, val):
+        try:
+            return s.transform(val)
+        except Exception as e:
+            raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
 
 
 config = Config()
