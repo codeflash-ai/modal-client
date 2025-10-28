@@ -83,12 +83,12 @@ def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str)
 
     tb_root = tb
     while tb is not None:
-        while tb.tb_next is not None:
-            if skip_frame(tb.tb_next.tb_frame.f_code.co_filename):
-                tb.tb_next = tb.tb_next.tb_next
-            else:
-                break
+        next_tb = tb.tb_next
+        while next_tb is not None and skip_frame(next_tb.tb_frame.f_code.co_filename):
+            next_tb = next_tb.tb_next
+        tb.tb_next = next_tb
         tb = tb.tb_next
+
     tb = tb_root
 
     # Now step forward again until we get to first frame of user code
