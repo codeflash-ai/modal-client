@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-from collections import defaultdict
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Optional
@@ -79,7 +78,7 @@ def _print_watched_paths(paths: set[Path]):
 
 def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFilter]:
     paths = set()
-    dir_filters: dict[Path, Optional[set[Path]]] = defaultdict(set)
+    dir_filters: dict[Path, Optional[set[Path]]] = {}
     for mount in mounts:
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
         for entry in mount._entries:
@@ -88,10 +87,12 @@ def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFi
             paths.add(path)
             if filter_file is None:
                 dir_filters[path] = None
-            elif dir_filters[path] is not None:
+            else:
+                if path not in dir_filters or dir_filters[path] is None:
+                    dir_filters[path] = set()
                 dir_filters[path].add(filter_file.absolute().resolve())
 
-    watch_filter = AppFilesFilter(dir_filters=dict(dir_filters))
+    watch_filter = AppFilesFilter(dir_filters=dir_filters)
     return paths, watch_filter
 
 
