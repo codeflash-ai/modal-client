@@ -13,6 +13,8 @@ from struct import pack
 
 from modal.config import logger
 
+_PLATFORM_SUPPORTED = sys.platform == "linux" or sys.platform == "darwin"
+
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
 
@@ -151,7 +153,8 @@ class ImportInterceptor(importlib.abc.MetaPathFinder):
 
 
 def _instrument_imports(socket_filename: str):
-    if not supported_platform():
+    # Cache platform support result to avoid excessive checks
+    if not _PLATFORM_SUPPORTED:
         logger.debug("unsupported platform, not instrumenting imports")
         return
     interceptor = ImportInterceptor.connect(socket_filename)
