@@ -44,6 +44,10 @@ from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 if typing.TYPE_CHECKING:
     import modal._functions
 
+_FUNCTION_TYPE_GENERATOR = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+
+_FUNCTION_TYPE_FUNCTION = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
 
 class FunctionInfoType(Enum):
     PACKAGE = "package"
@@ -114,7 +118,7 @@ def is_async(function):
 
 
 def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
-    return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+    return _FUNCTION_TYPE_GENERATOR if is_generator else _FUNCTION_TYPE_FUNCTION
 
 
 class FunctionInfo:
