@@ -83,9 +83,11 @@ def is_method_fn(object_qual_name: str):
     # methods have names like Cls.foo.
     if "<locals>" in object_qual_name:
         # functions can be nested in multiple local scopes.
-        rest = object_qual_name.split("<locals>.")[-1]
-        return len(rest.split(".")) > 1
-    return len(object_qual_name.split(".")) > 1
+        # Optimize: use rpartition for last occurrence and avoid unnecessary split
+        _, _, rest = object_qual_name.rpartition("<locals>.")
+        # Optimize: replace split with find for single pass and O(1) check
+        return "." in rest
+    return "." in object_qual_name
 
 
 def is_top_level_function(f: Callable) -> bool:
