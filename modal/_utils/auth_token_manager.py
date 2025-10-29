@@ -59,6 +59,9 @@ class _AuthTokenManager:
         Fetch a new token from the control plane. If called concurrently, only one coroutine will make a request for a
         new token. The others will block on a lock, until the first coroutine has fetched the new token.
         """
+        # Reduced time spent with the lock held by double-checking before acquiring the lock.
+        if self._token and not self._needs_refresh():
+            return
         lock = await self._get_lock()
         async with lock:
             # Double check inside lock - maybe another coroutine refreshed already. This happens the first time we fetch
