@@ -360,7 +360,48 @@ class FunctionInfo:
         return self.function_name
 
     def is_nullary(self):
-        signature = inspect.signature(self.raw_f)
+        """Optimized to avoid creating full Signature and Parameter objects when possible."""
+        f = self.raw_f
+        # Try to use the __code__ object for direct analysis when possible
+        try:
+            code = getattr(f, "__code__", None)
+            if code is not None:
+                # co_argcount: number of positional arguments (not including *args/**kwargs)
+                # co_kwonlyargcount: number of keyword-only arguments (not including **kwargs)
+                # co_flags: check for *args and **kwargs
+                VARARGS = 0x04
+                VARKWARGS = 0x08
+                total_args = code.co_argcount + code.co_kwonlyargcount
+
+                # If the function accepts *args or **kwargs, treat as nullary
+                if (code.co_flags & VARARGS) or (code.co_flags & VARKWARGS):
+                    return True
+
+                # Fast path: if no positional or kwonly args, it's nullary
+                if total_args == 0:
+                    return True
+
+                # Check for defaults to all args, otherwise we have to fallback to inspect
+                # Defaults for positional arguments:
+                defaults = f.__defaults__ or ()
+                kwonlydefaults = f.__kwdefaults__ or {}
+                num_positional_non_default = code.co_argcount - len(defaults)
+
+                # If any positional arg does not have default, not nullary
+                if num_positional_non_default > 0:
+                    return False
+                # If any kwonly arg does not have default, not nullary
+                if code.co_kwonlyargcount > 0:
+                    # kwonly arg names
+                    kwonly_names = code.co_varnames[code.co_argcount : code.co_argcount + code.co_kwonlyargcount]
+                    if any(name not in kwonlydefaults for name in kwonly_names):
+                        return False
+                return True
+        except Exception:
+            pass
+
+        # Fall back to old method
+        signature = inspect.signature(f)
         for param in signature.parameters.values():
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 # variadic parameters are nullary
