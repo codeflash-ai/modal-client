@@ -3,7 +3,6 @@ import asyncio
 import base64
 import json
 import time
-import typing
 from typing import Any
 
 from modal.exception import ExecutionError
@@ -25,7 +24,7 @@ class _AuthTokenManager:
         self._stub = stub
         self._token = ""
         self._expiry = 0.0
-        self._lock: typing.Union[asyncio.Lock, None] = None
+        self._lock: asyncio.Lock = asyncio.Lock()
 
     async def get_token(self) -> str:
         """
@@ -89,8 +88,6 @@ class _AuthTokenManager:
         # being run inside the synchronicity event loop and binds the lock to the
         # correct event loop on Python 3.9 which eagerly assigns event loops on
         # constructions of locks
-        if self._lock is None:
-            self._lock = asyncio.Lock()
         return self._lock
 
     @staticmethod
