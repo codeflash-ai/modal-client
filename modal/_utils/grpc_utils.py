@@ -9,11 +9,7 @@ import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import (
-    Any,
-    Optional,
-    TypeVar,
-)
+from typing import Any, Optional, TypeVar
 
 import grpclib.client
 import grpclib.config
@@ -25,6 +21,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
+import modal.client
 from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
@@ -206,18 +203,20 @@ async def retry_transient_errors(
 
     metadata = metadata + [("x-modal-timestamp", str(time.time()))]
     while True:
+        attempt_t = time.time()
         attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
             ("x-retry-attempt", str(n_retries)),
             *metadata,
         ]
         if n_retries > 0:
-            attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
+            attempt_metadata.append(("x-retry-delay", str(attempt_t - t0)))
         timeouts = []
         if attempt_timeout is not None:
             timeouts.append(attempt_timeout)
         if total_timeout is not None:
-            timeouts.append(max(total_deadline - time.time(), attempt_timeout_floor))
+            remaining = max(total_deadline - attempt_t, attempt_timeout_floor)
+            timeouts.append(remaining)
         if timeouts:
             timeout = min(timeouts)  # In case the function provided both types of timeouts
         else:
@@ -231,23 +230,32 @@ async def retry_transient_errors(
                 else:
                     raise exc
 
+            now = time.time()
             if max_retries is not None and n_retries >= max_retries:
                 final_attempt = True
-            elif total_deadline is not None and time.time() + delay + attempt_timeout_floor >= total_deadline:
+            elif total_deadline is not None and now + delay + attempt_timeout_floor >= total_deadline:
                 final_attempt = True
             else:
                 final_attempt = False
 
             if final_attempt:
-                logger.debug(
-                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
-                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
-                )
                 if isinstance(exc, OSError):
+                    logger.debug(
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                    )
                     raise ConnectionError(str(exc))
                 elif isinstance(exc, asyncio.TimeoutError):
+                    logger.debug(
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                    )
                     raise ConnectionError(str(exc))
                 else:
+                    logger.debug(
+                        f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                        f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                    )
                     raise exc
 
             if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
@@ -260,6 +268,7 @@ async def retry_transient_errors(
 
             n_retries += 1
 
+            # Batched warning checks to avoid unnecessary computation in normal (non-warning) retries.
             if (
                 retry_warning_message
                 and n_retries % retry_warning_message.warning_interval == 0
